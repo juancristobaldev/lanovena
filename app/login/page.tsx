@@ -70,7 +70,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
       {/* SECCIÓN VISUAL (Izquierda) */}
-      <div className="hidden md:flex md:w-1/2 bg-indigoix relative overflow-hidden items-center justify-center p-12 text-white">
+      <div className="hidden md:flex md:w-1/2 bg-novena-indigo relative overflow-hidden items-center justify-center p-12 text-white">
         <div className="absolute top-0 left-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
         <div className="absolute bottom-0 right-0 w-96 h-96 bg- opacity-10 rounded-full translate-x-1/3 translate-y-1/3"></div>
         <div className="relative z-10 max-w-md text-center">

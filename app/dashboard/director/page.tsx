@@ -322,7 +322,7 @@ function QuickActions() {
 
       <div className="grid gap-3">
         <Link
-          href="/dashboard/director/players/new"
+          href="/dashboard/director/players"
           className="flex items-center gap-3 p-4 bg-white/10 hover:bg-white/20 rounded-xl transition border border-white/10"
         >
           <Plus className="h-5 w-5 text-white" />
