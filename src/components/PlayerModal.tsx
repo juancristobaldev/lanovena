@@ -1,19 +1,18 @@
 "use client";
 
 import { useForm } from "react-hook-form";
-import { X, Save, Loader2 } from "lucide-react";
+import { X, Save, Loader2, Trophy, UserPlus } from "lucide-react";
 import { gql } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
+import { useAlert } from "@/src/providers/alert"; // Asumiendo que tienes este provider
 
-// Queries auxiliares para llenar los selects del formulario
+// QUERIES AUXILIARES
 const GET_FORM_DATA = gql`
-  query GetFormData($schoolId: String!) {
-    # Asumiendo que existen estas queries o similares
+  query GetPlayerFormData($schoolId: String!) {
     categories(schoolId: $schoolId) {
       id
       name
     }
-    # Listar usuarios con rol GUARDIAN para asignar
     usersByRole(role: GUARDIAN, schoolId: $schoolId) {
       id
       fullName
@@ -39,18 +38,30 @@ export default function PlayerModal({
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
-  }: any = useForm();
+  } = useForm();
+  const { showAlert } = useAlert(); // Opcional, para feedback
 
-  const { data: formData }: any = useQuery(GET_FORM_DATA, {
-    variables: { schoolId },
-    skip: !schoolId,
-  });
+  // Cargar datos para selects
+  const { data: formData, loading: loadingData }: any = useQuery(
+    GET_FORM_DATA,
+    {
+      variables: { schoolId },
+      skip: !schoolId || !isOpen,
+    },
+  );
 
   const [createPlayer, { loading }] = useMutation(CREATE_PLAYER, {
     onCompleted: () => {
       onSuccess();
+      reset(); // Limpiar form
       onClose();
+    },
+    onError: (err) => {
+      // Manejo básico de error
+      console.error(err);
+      if (showAlert) showAlert(err.message, "error");
     },
   });
 
@@ -58,10 +69,13 @@ export default function PlayerModal({
     createPlayer({
       variables: {
         input: {
-          ...data,
-          // Convertir fecha string a objeto Date si es necesario o formato ISO
-          birthDate: new Date(data.birthDate),
-          scholarship: data.scholarship === "true",
+          firstName: data.firstName,
+          lastName: data.lastName,
+          birthDate: new Date(data.birthDate), // Convertir a Date
+          categoryId: data.categoryId,
+          guardianId: data.guardianId,
+          scholarship: data.scholarship === "true", // Convertir string a bool
+          schoolId,
         },
       },
     });
@@ -70,128 +84,164 @@ export default function PlayerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        {/* Modal Header */}
-        <div className="bg-[#312E81] px-6 py-4 flex justify-between items-center text-white">
-          <h2 className="font-bold text-lg">Nuevo Jugador</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#312E81]/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="bg-gray-50 px-6 py-4 flex justify-between items-center border-b border-gray-100">
+          <div>
+            <h2 className="font-bold text-lg text-gray-900">Nuevo Jugador</h2>
+            <p className="text-xs text-gray-500">
+              Registra un alumno en la escuela
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="hover:bg-white/20 p-1 rounded transition"
+            className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-200 transition"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
-                Nombre
-              </label>
-              <input
-                {...register("firstName", { required: true })}
-                className="input-base"
-                placeholder="Ej: Matías"
-              />
+        {/* Form Body (Scrollable) */}
+        <div className="p-6 overflow-y-auto custom-scrollbar">
+          {loadingData ? (
+            <div className="py-10 flex justify-center">
+              <Loader2 className="animate-spin text-indigo-600" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
-                Apellido
-              </label>
-              <input
-                {...register("lastName", { required: true })}
-                className="input-base"
-                placeholder="Ej: Fernández"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
-              Fecha de Nacimiento
-            </label>
-            <input
-              type="date"
-              {...register("birthDate", { required: true })}
-              className="input-base"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
-                Categoría
-              </label>
-              <select
-                {...register("categoryId", { required: true })}
-                className="input-base bg-white"
-              >
-                <option value="">Seleccionar...</option>
-                {formData?.categories?.map((c: any) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
-                Beca
-              </label>
-              <select
-                {...register("scholarship")}
-                className="input-base bg-white"
-              >
-                <option value="false">No</option>
-                <option value="true">Sí (Gratuidad)</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
-              Apoderado Responsable
-            </label>
-            <select
-              {...register("guardianId", { required: true })}
-              className="input-base bg-white"
+          ) : (
+            <form
+              id="createPlayerForm"
+              onSubmit={handleSubmit(onSubmit)}
+              className="space-y-5"
             >
-              <option value="">Buscar apoderado...</option>
-              {formData?.usersByRole?.map((u: any) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-400 mt-1">
-              * El apoderado debe estar registrado previamente.
-            </p>
-          </div>
+              {/* Nombre y Apellido */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
+                    Nombre
+                  </label>
+                  <input
+                    {...register("firstName", { required: true })}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-[#312E81] outline-none"
+                    placeholder="Ej: Matías"
+                  />
+                  {errors.firstName && (
+                    <span className="text-xs text-red-500">Requerido</span>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
+                    Apellido
+                  </label>
+                  <input
+                    {...register("lastName", { required: true })}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-[#312E81] outline-none"
+                    placeholder="Ej: Fernández"
+                  />
+                </div>
+              </div>
 
-          <div className="pt-4 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 text-sm bg-[#10B981] text-white font-bold rounded-lg hover:bg-emerald-600 transition flex items-center gap-2"
-            >
-              {loading ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <Save size={16} />
-              )}
-              Guardar Jugador
-            </button>
-          </div>
-        </form>
+              {/* Fecha Nacimiento */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
+                  Fecha de Nacimiento
+                </label>
+                <input
+                  type="date"
+                  {...register("birthDate", { required: true })}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-[#312E81] outline-none"
+                />
+              </div>
+
+              {/* Categoría y Beca */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
+                    Categoría
+                  </label>
+                  <div className="relative">
+                    <select
+                      {...register("categoryId", { required: true })}
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-[#312E81] outline-none bg-white appearance-none"
+                    >
+                      <option value="">Seleccionar...</option>
+                      {formData?.categories?.map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {(!formData?.categories ||
+                      formData.categories.length === 0) && (
+                      <p className="text-[10px] text-red-500 mt-1">
+                        ⚠️ Crea categorías primero
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5 flex items-center gap-1">
+                    <Trophy size={12} className="text-amber-500" /> Beca
+                  </label>
+                  <select
+                    {...register("scholarship")}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-[#312E81] outline-none bg-white"
+                  >
+                    <option value="false">Pago Normal</option>
+                    <option value="true">Becado (Gratuidad)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Apoderado */}
+              <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                <label className="block text-xs font-bold text-[#312E81] uppercase mb-1.5 flex items-center gap-1">
+                  <UserPlus size={14} /> Apoderado Responsable
+                </label>
+                <select
+                  {...register("guardianId", { required: true })}
+                  className="w-full px-3 py-2.5 rounded-xl border border-indigo-200 text-sm focus:ring-2 focus:ring-[#312E81] outline-none bg-white"
+                >
+                  <option value="">Buscar apoderado registrado...</option>
+                  {formData?.usersByRole?.map((u: any) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500 mt-2">
+                  * Si el apoderado no aparece, debes registrarlo primero en la
+                  sección "Apoderados".
+                </p>
+              </div>
+            </form>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-gray-100 bg-gray-50 flex gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-3 text-sm font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            form="createPlayerForm"
+            disabled={loading || loadingData}
+            className="flex-1 px-4 py-3 text-sm font-bold text-white bg-[#10B981] rounded-xl hover:bg-emerald-600 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-lg shadow-emerald-900/10"
+          >
+            {loading ? (
+              <Loader2 className="animate-spin" size={18} />
+            ) : (
+              <Save size={18} />
+            )}
+            Guardar Ficha
+          </button>
+        </div>
       </div>
     </div>
   );

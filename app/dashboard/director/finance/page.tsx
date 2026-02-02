@@ -40,7 +40,8 @@ const GET_FINANCE_DASHBOARD = gql`
       paymentMethod
       player {
         id
-        fullName
+        firstName
+        lastName
         category {
           name
         }
@@ -109,12 +110,12 @@ export default function FinancePage() {
   const availableSchools = useMemo(() => {
     if (!user) return [];
     // @ts-ignore
-    return user.schools || (user.school ? [user.school] : []);
+    return user.schools || [];
   }, [user]);
 
   useEffect(() => {
     if (availableSchools.length > 0 && !selectedSchoolId) {
-      setSelectedSchoolId(availableSchools[0].id);
+      setSelectedSchoolId(availableSchools[0].school.id);
     }
   }, [availableSchools, selectedSchoolId]);
 

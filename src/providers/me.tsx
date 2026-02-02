@@ -43,6 +43,14 @@ export interface User {
     id: string;
     name: string;
   };
+
+  schools?: {
+    id: string;
+    school: {
+      id: string;
+      name: string;
+    };
+  }[];
 }
 
 interface UserContextType {

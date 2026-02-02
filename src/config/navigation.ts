@@ -12,6 +12,11 @@ import {
   ShoppingBag,
   Balloon,
   GroupIcon,
+  GalleryHorizontal,
+  DnaIcon,
+  IdCard,
+  Medal,
+  BicepsFlexed,
 } from "lucide-react";
 
 // Tipos de roles basados en tu Prisma Schema y Docs
@@ -40,6 +45,11 @@ export const MENU_ITEMS = {
       title: "Mis Escuelas",
       href: "/dashboard/director",
       icon: LayoutDashboard,
+    },
+    {
+      title: "Ejercicios",
+      href: "/dashboard/director/exercises",
+      icon: BicepsFlexed,
     },
     {
       title: "Categorias",
@@ -73,19 +83,35 @@ export const MENU_ITEMS = {
     // Entrenador
     { title: "Mis Categorías", href: "/dashboard/coach", icon: Users },
     {
-      title: "Planificación",
-      href: "/dashboard/coach/planning",
+      title: "Planificar",
+      href: "/dashboard/coach/session/new",
+      icon: Medal,
+    },
+
+    {
+      title: "Agenda & Partidos",
+      href: "/dashboard/coach/session",
       icon: CalendarDays,
     },
     {
+      title: "Pizarra táctica",
+      href: "/dashboard/coach/tactical-board",
+      icon: Trophy,
+    },
+    {
       title: "Evaluaciones",
-      href: "/dashboard/coach/evaluations",
+      href: "/dashboard/coach/tests",
       icon: Trophy,
     },
   ],
   GUARDIAN: [
     // Apoderado
     { title: "Mis Jugadores", href: "/dashboard/guardian", icon: Baby },
+    {
+      title: "Identificaciones",
+      href: "/dashboard/guardian/carnet",
+      icon: IdCard,
+    },
     {
       title: "Agenda & Partidos",
       href: "/dashboard/guardian/schedule",
@@ -97,9 +123,9 @@ export const MENU_ITEMS = {
       icon: CreditCard,
     },
     {
-      title: "Tienda Oficial",
-      href: "/dashboard/guardian/store",
-      icon: ShoppingBag,
+      title: "Galería",
+      href: "/dashboard/guardian/gallery",
+      icon: GalleryHorizontal,
     },
   ],
 };

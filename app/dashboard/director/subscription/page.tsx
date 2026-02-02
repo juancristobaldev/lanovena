@@ -21,8 +21,7 @@ import { useQuery, useMutation } from "@apollo/client/react";
 import { gql } from "@apollo/client";
 import { useAlert } from "@/src/providers/alert";
 import { useUser } from "@/src/providers/me";
-import { PLANS } from "@/src/utils/plans"; // Asegúrate que esta ruta es correcta
-
+import { PLANS } from "@/src/utils/plans";
 // === GRAPHQL OPERATIONS ===
 const GET_SCHOOL_SETTINGS = gql`
   query GetSchoolSettings($schoolId: ID!) {
