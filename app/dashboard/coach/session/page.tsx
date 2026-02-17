@@ -17,10 +17,11 @@ import {
   Plane,
   Home,
   Dumbbell,
+  CheckCircle2, // Importamos icono para completado
 } from "lucide-react";
 import { useQuery } from "@apollo/client/react";
 
-// --- GRAPHQL QUERY ACTUALIZADA ---
+// --- GRAPHQL QUERY ---
 export const GET_ALL_COACH_EVENTS = gql`
   query GetAllCoachEvents {
     meCoach {
@@ -29,13 +30,12 @@ export const GET_ALL_COACH_EVENTS = gql`
         categories {
           id
           name
-          # 1. Traemos Entrenamientos
           sessions {
             id
+            status
             date
             notes
           }
-          # 2. Traemos Partidos (Con sus campos específicos)
           matches {
             id
             date
@@ -59,6 +59,7 @@ interface EventItem {
   date: string;
   categoryName: string;
   notes?: string;
+  status?: string; // ✅ Agregamos status aquí
   // Campos específicos de Match
   rivalName?: string;
   isHome?: boolean;
@@ -71,7 +72,12 @@ interface CoachData {
       categories: {
         id: string;
         name: string;
-        sessions: { id: string; date: string; notes?: string }[];
+        sessions: {
+          id: string;
+          status: string;
+          date: string;
+          notes?: string;
+        }[];
         matches: {
           id: string;
           date: string;
@@ -110,6 +116,7 @@ export default function SessionsRegistryPage() {
           type: "TRAINING",
           date: sess.date,
           notes: sess.notes,
+          status: sess.status, // ✅ Guardamos el status
           categoryName: cat.name,
         });
       });
@@ -130,19 +137,30 @@ export default function SessionsRegistryPage() {
     });
 
     const now = new Date();
-    now.setHours(now.getHours() - 2); // Tolerancia de 2 horas
+    now.setHours(now.getHours() - 2); // Tolerancia de 2 horas para partidos/eventos sin status
+
+    // ✅ LÓGICA DE FILTRADO ACTUALIZADA
+    const upcomingEvents = allEvents
+      .filter((e) => {
+        // Si es entrenamiento y está completado, NO es upcoming (va a historial)
+        if (e.type === "TRAINING" && e.status === "COMPLETED") return false;
+        // Si no está completado, verificamos la fecha
+        return new Date(e.date) >= now;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const historyEvents = allEvents
+      .filter((e) => {
+        // Si es entrenamiento y está completado, SI es historial (aunque la fecha sea futura)
+        if (e.type === "TRAINING" && e.status === "COMPLETED") return true;
+        // Si no, verificamos si la fecha ya pasó
+        return new Date(e.date) < now;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return {
-      upcoming: allEvents
-        .filter((e) => new Date(e.date) >= now)
-        .sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-        ),
-      history: allEvents
-        .filter((e) => new Date(e.date) < now)
-        .sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-        ),
+      upcoming: upcomingEvents,
+      history: historyEvents,
     };
   }, [data]);
 
@@ -207,6 +225,7 @@ export default function SessionsRegistryPage() {
               const eventDate = new Date(event.date);
               const isTodayEvent = isToday(eventDate);
               const isMatch = event.type === "MATCH";
+              const isCompleted = event.status === "COMPLETED";
 
               // Link dinámico según el tipo
               const linkHref = isMatch
@@ -219,6 +238,7 @@ export default function SessionsRegistryPage() {
                     className={` mt-4
                     bg-white rounded-2xl p-4 shadow-sm border flex items-center gap-4 group active:scale-[0.98] transition-all
                     ${isMatch ? "border-indigo-100 hover:border-indigo-200" : "border-emerald-100/50 hover:border-emerald-200"}
+                    ${isCompleted ? "opacity-90 bg-gray-50/50" : ""} 
                   `}
                   >
                     {/* FECHA (Columna Izquierda) */}
@@ -248,11 +268,22 @@ export default function SessionsRegistryPage() {
                     <div className="flex-1 min-w-0">
                       {/* Badge Superior */}
                       <div className="flex items-center gap-2 mb-1">
-                        {isTodayEvent && activeTab === "UPCOMING" && (
-                          <span className="bg-[#10B981] text-white text-[9px] px-1.5 py-0.5 rounded-md font-bold tracking-wide animate-pulse">
-                            HOY
+                        {/* Etiqueta HOY */}
+                        {isTodayEvent &&
+                          activeTab === "UPCOMING" &&
+                          !isCompleted && (
+                            <span className="bg-[#10B981] text-white text-[9px] px-1.5 py-0.5 rounded-md font-bold tracking-wide animate-pulse">
+                              HOY
+                            </span>
+                          )}
+
+                        {/* Etiqueta COMPLETADO (Para historial) */}
+                        {isCompleted && (
+                          <span className="bg-gray-200 text-gray-600 text-[9px] px-1.5 py-0.5 rounded-md font-bold tracking-wide flex items-center gap-1">
+                            <CheckCircle2 size={10} /> FINALIZADO
                           </span>
                         )}
+
                         <span
                           className={`text-[10px] font-bold px-1.5 rounded border uppercase tracking-wider flex items-center gap-1
                           ${
