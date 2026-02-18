@@ -8,7 +8,7 @@ import Cookies from "js-cookie";
 
 // 1. Usamos 'new HttpLink' en lugar de 'createHttpLink'
 const httpLink = new HttpLink({
-  uri: "http://localhost:4000/graphql", // Asegúrate que este puerto coincida con tu backend NestJS
+  uri: "https://lanovena-api.vercel.app/graphql", // Asegúrate que este puerto coincida con tu backend NestJS
 });
 
 // 2. Creamos el Auth Link manualmente usando ApolloLink
