@@ -49,6 +49,17 @@ const GET_COACH_CATEGORIES = gql`
   }
 `;
 
+const GET_PLAYERS_BY_CATEGORY = gql`
+  query PlayersByCategory($categoryId: String!) {
+    playersByCategory(categoryId: $categoryId) {
+      id
+      firstName
+      lastName
+      position
+    }
+  }
+`;
+
 // 2. Obtener Pizarras por Categoría (Para la biblioteca)
 const GET_BOARDS_BY_CATEGORY = gql`
   query GetBoardsByCategory($categoryId: ID!) {

@@ -11,6 +11,7 @@ export const ME_QUERY = gql`
       id
       email
       fullName
+      schoolId
       role # IMPORTANTE: Usamos esto para el Drawer condicional
       schools {
         id
@@ -39,6 +40,7 @@ export interface User {
   fullName: string;
   role: UserRole;
   avatar?: string;
+  schoolId?: string;
   school?: {
     id: string;
     name: string;

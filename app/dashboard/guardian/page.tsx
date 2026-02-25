@@ -17,9 +17,37 @@ import {
   Newspaper,
   User,
   ArrowUpRight,
+  FileExclamationPoint,
 } from "lucide-react";
 import { useQuery } from "@apollo/client/react";
 import { gql } from "@apollo/client";
+export const ATTENDANCE_STATUS = {
+  PRESENT: {
+    label: "Presente",
+    color: "bg-emerald-100 text-emerald-700",
+    icon: <CheckCircle2 size={14} />,
+  },
+  ABSENT: {
+    label: "Ausente",
+    color: "bg-red-100 text-red-700",
+    icon: <AlertCircle size={14} />,
+  },
+  EXCUSED: {
+    label: "Justificado",
+    color: "bg-amber-100 text-amber-700",
+    icon: <Clock size={14} />,
+  },
+  LATE: {
+    label: "Atraso",
+    color: "bg-indigo-100 text-indigo-700",
+    icon: <Clock size={14} />,
+  },
+  PENDING: {
+    label: "Pendiente",
+    color: "bg-amber-100 text-amber-700",
+    icon: <FileExclamationPoint size={14} />,
+  },
+};
 
 // === GRAPHQL ===
 const GET_GUARDIAN_HOME = gql`
@@ -37,6 +65,14 @@ const GET_GUARDIAN_HOME = gql`
         lastName
         photoUrl
         active
+        attendace {
+          id
+          status
+          notes
+          createdAt
+          rating
+          feedback
+        }
         category {
           id
           name
@@ -325,6 +361,146 @@ export default function GuardianDashboardPage() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            {/* SECCIÓN DE ASISTENCIA */}
+            <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-6 border-b border-gray-50 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center text-[#312E81]">
+                    <CalendarDays size={18} />
+                  </div>
+                  <h3 className="font-bold text-gray-900 text-lg">
+                    Historial de Asistencia
+                  </h3>
+                </div>
+                {/* Resumen rápido opcional */}
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase leading-none">
+                    Promedio
+                  </p>
+                  <p className="text-xl font-black text-[#312E81]">
+                    {currentPlayer.attendace?.length > 0
+                      ? Math.round(
+                          (currentPlayer.attendace.filter(
+                            (a: any) => a.status === "PRESENT",
+                          ).length /
+                            currentPlayer.attendace.length) *
+                            100,
+                        )
+                      : 0}
+                    %
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/50">
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        Fecha y Sesión
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        Estado
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest hidden md:table-cell">
+                        Evaluación
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">
+                        Detalles
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {currentPlayer.attendace?.length > 0 ? (
+                      currentPlayer.attendace.slice(0, 5).map((record: any) => {
+                        const statusInfo =
+                          ATTENDANCE_STATUS[
+                            record.status as keyof typeof ATTENDANCE_STATUS
+                          ] || ATTENDANCE_STATUS.PRESENT;
+                        const date = new Date(record.createdAt);
+
+                        return (
+                          <tr
+                            key={record.id}
+                            className="hover:bg-gray-50/50 transition-colors group"
+                          >
+                            <td className="px-6 py-4">
+                              <p className="text-sm font-bold text-gray-900 capitalize">
+                                {date.toLocaleDateString("es-CL", {
+                                  weekday: "short",
+                                  day: "2-digit",
+                                  month: "short",
+                                })}
+                              </p>
+                              <p className="text-[10px] text-gray-500 font-medium">
+                                Sesión #{record.sessionId || "---"}
+                              </p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-tight ${statusInfo.color}`}
+                              >
+                                {statusInfo.icon}
+                                {statusInfo.label}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 hidden md:table-cell">
+                              {record.rating ? (
+                                <div className="flex gap-0.5">
+                                  {[...Array(5)].map((_, i) => (
+                                    <Trophy
+                                      key={i}
+                                      size={12}
+                                      className={
+                                        i < record.rating
+                                          ? "text-amber-400 fill-amber-400"
+                                          : "text-gray-200"
+                                      }
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-gray-400 italic">
+                                  Sin nota
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-400 hover:text-[#312E81]">
+                                <ChevronRight size={18} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-12 text-center">
+                          <div className="flex flex-col items-center opacity-40">
+                            <CalendarDays
+                              size={40}
+                              className="mb-2 text-gray-300"
+                            />
+                            <p className="text-sm font-medium text-gray-500">
+                              No hay registros de asistencia este mes.
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {currentPlayer.attendace?.length > 5 && (
+                <div className="p-4 bg-gray-50/30 border-t border-gray-50 text-center">
+                  <button className="text-xs font-bold text-[#312E81] hover:underline uppercase tracking-widest">
+                    Ver historial completo
+                  </button>
+                </div>
+              )}
             </section>
           </div>
 

@@ -17,6 +17,9 @@ import {
   IdCard,
   Medal,
   BicepsFlexed,
+  Calendar,
+  ListCheck,
+  Newspaper,
 } from "lucide-react";
 
 // Tipos de roles basados en tu Prisma Schema y Docs
@@ -45,6 +48,26 @@ export const MENU_ITEMS = {
       title: "Mis Escuelas",
       href: "/dashboard/director",
       icon: LayoutDashboard,
+    },
+    {
+      title: "Mi equipo",
+      href: "/dashboard/director/team",
+      icon: Users,
+    },
+    {
+      title: "Noticias",
+      href: "/dashboard/director/notices",
+      icon: Newspaper,
+    },
+    {
+      title: "Calendario",
+      href: "/dashboard/director/calendar",
+      icon: Calendar,
+    },
+    {
+      title: "Tareas",
+      href: "/dashboard/director/tasks",
+      icon: ListCheck,
     },
     {
       title: "Ejercicios",
@@ -86,6 +109,12 @@ export const MENU_ITEMS = {
       title: "Planificar",
       href: "/dashboard/coach/session/new",
       icon: Medal,
+    },
+    //http://localhost:3000/dashboard/coach/team
+    {
+      title: "Mi Plantel",
+      href: "/dashboard/coach/team",
+      icon: Users,
     },
 
     {
