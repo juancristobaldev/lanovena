@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { MENU_ITEMS, UserRole } from "../config/navigation";
 import { useUser } from "../providers/me";
+import Cookies from "js-cookie";
 
 export default function Sidebar() {
   const { user, loading: isLoading } = useUser(); // Asumo que useUser podría devolver isLoading
@@ -41,7 +42,8 @@ export default function Sidebar() {
   // Manejo de Logout (Mockup - conectar con tu lógica real)
   const handleLogout = () => {
     if (confirm("¿Estás seguro que deseas cerrar sesión?")) {
-      console.log("Cerrando sesión...");
+      Cookies.remove("token");
+      window.location.href = "/";
       // Aquí iría tu función de logout, ej: logout();
     }
   };

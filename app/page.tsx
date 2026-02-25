@@ -19,6 +19,7 @@ import {
   Check,
   Instagram,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState<"director" | "coach" | "parent">(
@@ -73,7 +74,10 @@ export default function LandingPage() {
             >
               Ingresar
             </a>
-            <a className="bg-gray-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-black transition-transform hover:scale-105 shadow-lg">
+            <a
+              href="/register"
+              className="bg-gray-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-black transition-transform hover:scale-105 shadow-lg"
+            >
               Prueba Gratis
             </a>
           </div>
@@ -106,12 +110,11 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button className="px-8 py-4 bg-[#312E81] text-white rounded-xl font-bold text-lg hover:bg-indigo-900 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-2">
-              Prueba 15 días Gratis <ArrowRight size={20} />
-            </button>
-            <button className="px-8 py-4 bg-white text-gray-700 border border-gray-200 rounded-xl font-bold text-lg hover:bg-gray-50 flex items-center justify-center gap-2">
-              <PlayCircle size={20} className="text-gray-400" /> Ver Demo
-            </button>
+            <Link href="/register">
+              <button className="px-8 py-8 bg-[#312E81] text-white rounded-xl font-bold text-lg hover:bg-indigo-900 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-2">
+                Prueba tu demo <ArrowRight size={20} />
+              </button>
+            </Link>
           </div>
         </div>
       </section>

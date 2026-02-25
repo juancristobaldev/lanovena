@@ -64,7 +64,7 @@ export default function LoginPage() {
       // Redirección por Rol
       if (user.role === "SUPERADMIN") {
         router.push("/admin/dashboard");
-      } else if (!user.schoolId) {
+      } else if (!user.schoolId && !user.schools) {
         router.push("/onboarding");
       } else {
         router.push("/dashboard/director");
