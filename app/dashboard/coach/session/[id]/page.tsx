@@ -23,6 +23,7 @@ import {
   PauseCircle,
   RotateCcw,
   Loader2,
+  Activity,
 } from "lucide-react";
 import { gql } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
@@ -127,12 +128,52 @@ const RATE_PLAYER_PERFORMANCE = gql`
     }
   }
 `;
+
+const GET_TEST_PROTOCOLS = gql`
+  query GetTestProtocols {
+    getAvailableTestProtocols {
+      id
+      name
+      category
+      unit
+    }
+  }
+`;
+
+const CREATE_EVALUATION = gql`
+  mutation CreateEvaluation($input: CreateEvaluationInput!) {
+    createEvaluation(createEvaluationInput: $input) {
+      id
+      value
+      protocol {
+        name
+      }
+    }
+  }
+`;
+
 // ---------------------------------------------------------------------------
-// 2. TYPES & INTERFACES
+// 2. TYPES & INTERFACES & DICCIONARIOS
 // ---------------------------------------------------------------------------
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED" | "PENDING";
 type TabView = "ATTENDANCE" | "PLANNING" | "EVALUATION" | "TACTICS";
+
+const UNIT_LABELS: Record<string, string> = {
+  SECONDS: "seg",
+  METERS: "m",
+  CENTIMETERS: "cm",
+  POINTS: "pts",
+  PERCENTAGE: "%",
+  COUNT: "reps/niveles",
+};
+
+interface TestProtocol {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+}
 
 interface Player {
   id: string;
@@ -142,13 +183,13 @@ interface Player {
 }
 
 interface TacticalBoardData {
-  id: string; // ID de la relación session-board
+  id: string;
   tacticalBoard: {
     id: string;
     title: string;
     description?: string;
-    initialState: any; // JSON Tokens + Strokes
-    animation?: any; // JSON Frames
+    initialState: any;
+    animation?: any;
   };
 }
 
@@ -161,33 +202,65 @@ export default function SessionDetailPage() {
   const router = useRouter();
   const sessionId = params.id as string;
 
-  const [completeSession, { loading: completing }] =
-    useMutation(COMPLETE_SESSION);
   // --- STATES ---
   const [activeTab, setActiveTab] = useState<TabView>("ATTENDANCE");
   const [attendanceMap, setAttendanceMap] = useState<
     Record<string, AttendanceStatus>
   >({});
-  // Almacena las notas por ID de jugador: { "player_123": "Buen control", "player_456": "Falta intensidad" }
-  const [feedbackMap, setFeedbackMap] = useState<Record<string, string>>({});
-
   const [ratingsMap, setRatingsMap] = useState<Record<string, number>>({});
+  const [selectedProtocol, setSelectedProtocol] = useState<TestProtocol | null>(
+    null,
+  );
+  const [evalValuesMap, setEvalValuesMap] = useState<Record<string, string>>(
+    {},
+  );
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
   // --- DATA FETCHING ---
-  const { data, loading, error }: any = useQuery(GET_SESSION_FULL_DETAIL, {
-    variables: { sessionId: sessionId },
+  const {
+    data: sessionData,
+    loading: loadingSession,
+    error: errorSession,
+  }: any = useQuery(GET_SESSION_FULL_DETAIL, {
+    variables: { sessionId },
     fetchPolicy: "network-only",
   });
-  const [ratePlayer] = useMutation(RATE_PLAYER_PERFORMANCE); // ✅ Ahora usamos esto
+
+  const { data: protocolsData }: any = useQuery(GET_TEST_PROTOCOLS, {
+    fetchPolicy: "cache-first",
+  });
+
+  const [completeSession, { loading: completing }] =
+    useMutation(COMPLETE_SESSION);
   const [registerAttendance] = useMutation(REGISTER_ATTENDANCE);
+  const [ratePlayer] = useMutation(RATE_PLAYER_PERFORMANCE);
+  const [createEvaluation] = useMutation(CREATE_EVALUATION);
+
+  // --- EFFECT ---
+  useEffect(() => {
+    if (sessionData && !loadingSession) {
+      const attMap: Record<string, AttendanceStatus> = {};
+      const rateMap: Record<string, number> = {};
+      const feedMap: Record<string, string> = {};
+
+      sessionData.trainingSession.attendance.forEach((r: any) => {
+        attMap[r.player.id] = r.status;
+        if (r.rating) rateMap[r.player.id] = r.rating;
+        if (r.feedback) feedMap[r.player.id] = r.feedback;
+      });
+
+      setAttendanceMap(attMap);
+      setRatingsMap(rateMap);
+      setFeedbackMap(feedMap);
+    }
+  }, [sessionData, loadingSession]);
 
   // --- HANDLERS ---
-
   const handleCompleteSession = async () => {
     if (
       !confirm(
-        "¿Estás seguro de finalizar el entrenamiento? Esto cerrará la asistencia.",
+        "¿Estás seguro de finalizar el entrenamiento? Esto cerrará la asistencia y bloqueará cambios.",
       )
     )
       return;
@@ -195,7 +268,6 @@ export default function SessionDetailPage() {
     try {
       await completeSession({
         variables: { sessionId },
-        // Actualizamos la caché local para que cambie el estado visualmente sin recargar
         update: (cache, { data }: any) => {
           const existingData: any = cache.readQuery({
             query: GET_SESSION_FULL_DETAIL,
@@ -214,12 +286,13 @@ export default function SessionDetailPage() {
         },
       });
       alert("Entrenamiento finalizado correctamente 🏁");
-      router.push("/dashboard/coach"); // Opcional: volver al home
+      router.push("/dashboard/coach");
     } catch (error) {
       console.error(error);
       alert("Error al finalizar la sesión");
     }
   };
+
   const handleAttendance = async (
     playerId: string,
     status: AttendanceStatus,
@@ -233,7 +306,7 @@ export default function SessionDetailPage() {
   };
 
   const handleMarkAllPresent = () => {
-    const players = data?.trainingSession?.category?.players || [];
+    const players = sessionData?.trainingSession?.category?.players || [];
     players.forEach((p: Player) => {
       if (attendanceMap[p.id] !== "PRESENT") handleAttendance(p.id, "PRESENT");
     });
@@ -244,32 +317,41 @@ export default function SessionDetailPage() {
   };
 
   const saveEvaluations = async () => {
-    setIsSaving(true);
+    if (!selectedProtocol) return alert("Selecciona una prueba primero.");
 
-    // Filtramos solo los jugadores que tienen una calificación marcada
-    const ratedPlayerIds = Object.keys(ratingsMap);
+    const playerIdsToSave = Object.keys(evalValuesMap).filter(
+      (id) => evalValuesMap[id].trim() !== "",
+    );
 
-    if (ratedPlayerIds.length === 0) {
+    if (playerIdsToSave.length === 0) {
       setIsSaving(false);
-      return alert("Califica al menos a un jugador antes de guardar.");
+      return alert(
+        "Ingresa el resultado de al menos un jugador antes de guardar.",
+      );
     }
 
+    setIsSaving(true);
     try {
-      // Enviamos todas las peticiones en paralelo (Bulk Save)
-      const promises = ratedPlayerIds.map((playerId) => {
-        return ratePlayer({
+      const promises = playerIdsToSave.map((playerId) => {
+        return createEvaluation({
           variables: {
-            sessionId: sessionId,
-            playerId: playerId,
-            rating: ratingsMap[playerId],
-            notes: feedbackMap[playerId] || "", // Enviamos nota vacía si no escribió nada
+            input: {
+              protocolId: selectedProtocol.id,
+              value: parseFloat(evalValuesMap[playerId]),
+              notes: feedbackMap[playerId] || "",
+              playerId: playerId,
+              sessionId: sessionId,
+            },
           },
         });
       });
 
       await Promise.all(promises);
 
-      alert("✅ Evaluaciones guardadas correctamente");
+      alert(
+        `✅ Se guardaron ${playerIdsToSave.length} evaluaciones exitosamente.`,
+      );
+      setEvalValuesMap({});
     } catch (error) {
       console.error(error);
       alert("Hubo un error al guardar las evaluaciones.");
@@ -278,57 +360,32 @@ export default function SessionDetailPage() {
     }
   };
 
-  // --- EFFECT ---
-  useEffect(() => {
-    if (data && !loading) {
-      const attMap: Record<string, AttendanceStatus> = {};
-      const rateMap: Record<string, number> = {};
-      const feedMap: Record<string, string> = {}; // <--- Mapa temporal para notas
-
-      data.trainingSession.attendance.forEach((r: any) => {
-        // 1. Cargar Asistencia
-        attMap[r.player.id] = r.status;
-
-        // 2. Cargar Ratings existentes
-        if (r.rating) rateMap[r.player.id] = r.rating;
-
-        // 3. Cargar Feedback existente
-        if (r.feedback) feedMap[r.player.id] = r.feedback;
-      });
-
-      setAttendanceMap(attMap);
-      setRatingsMap(rateMap);
-      setFeedbackMap(feedMap); // <--- Guardamos en el estado
-    }
-  }, [data, loading]);
-
   const stats = useMemo(() => {
     const values = Object.values(attendanceMap);
-    const total = data?.trainingSession?.category?.players?.length || 0;
+    const total = sessionData?.trainingSession?.category?.players?.length || 0;
     return {
       present: values.filter((s) => s === "PRESENT").length,
       late: values.filter((s) => s === "LATE").length,
       absent: values.filter((s) => s === "ABSENT").length,
       total,
     };
-  }, [attendanceMap, data]);
+  }, [attendanceMap, sessionData]);
 
-  if (loading) return <LoadingScreen />;
-  if (error) return <ErrorScreen />;
+  if (loadingSession) return <LoadingScreen />;
+  if (errorSession) return <ErrorScreen />;
 
-  const session = data.trainingSession;
+  const session = sessionData.trainingSession;
   const players: Player[] = session.category.players;
   const tacticalBoards: TacticalBoardData[] = session.tacticalBoards || [];
+  const protocols: TestProtocol[] =
+    protocolsData?.getAvailableTestProtocols || [];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 font-sans">
-      {/* ================= HEADER ================= */}
+    <div className="min-h-screen bg-gray-50 pb-20 font-sans selection:bg-[#10B981] selection:text-white">
       {/* ================= HEADER ================= */}
       <div
-        className={`pt-8 px-6 pb-16 rounded-b-[2.5rem] shadow-xl relative z-20 transition-all duration-500 ease-in-out
-          ${session.status === "COMPLETED" ? "bg-slate-800" : "bg-[#312E81]"}`}
+        className={`pt-8 px-6 pb-16 rounded-b-[2.5rem] shadow-xl relative z-20 transition-all duration-500 ease-in-out ${session.status === "COMPLETED" ? "bg-slate-800" : "bg-[#312E81]"}`}
       >
-        {/* Top Bar: Back & Status */}
         <div className="flex justify-between items-start mb-6">
           <button
             onClick={() => router.back()}
@@ -337,14 +394,8 @@ export default function SessionDetailPage() {
             <ChevronLeft className="w-6 h-6" />
           </button>
 
-          {/* Status Badge */}
           <div
-            className={`backdrop-blur-md border px-3 py-1 rounded-full flex items-center gap-2 transition-colors
-              ${
-                session.status === "COMPLETED"
-                  ? "bg-emerald-500/20 border-emerald-400/30 text-emerald-400"
-                  : "bg-white/10 border-white/20 text-white"
-              }`}
+            className={`backdrop-blur-md border px-3 py-1 rounded-full flex items-center gap-2 transition-colors ${session.status === "COMPLETED" ? "bg-emerald-500/20 border-emerald-400/30 text-emerald-400" : "bg-white/10 border-white/20 text-white"}`}
           >
             {session.status === "COMPLETED" ? (
               <CheckCircle2 size={14} />
@@ -357,14 +408,11 @@ export default function SessionDetailPage() {
           </div>
         </div>
 
-        {/* Main Content & Action */}
         <div className="flex justify-between items-end gap-4">
-          {/* Title & Meta Data */}
           <div className="flex-1">
             <h1 className="text-3xl font-black text-white mb-3 leading-tight">
               {session.category.name}
             </h1>
-
             <div className="flex flex-col gap-2 text-indigo-100/80 text-sm font-medium">
               <div className="flex items-center gap-2">
                 <CalendarDays className="w-4 h-4 text-[#10B981]" />
@@ -384,7 +432,6 @@ export default function SessionDetailPage() {
             </div>
           </div>
 
-          {/* Finalize Button (Only if NOT completed) */}
           {session.status !== "COMPLETED" && (
             <button
               onClick={handleCompleteSession}
@@ -426,7 +473,7 @@ export default function SessionDetailPage() {
           <TabItem
             active={activeTab === "EVALUATION"}
             onClick={() => setActiveTab("EVALUATION")}
-            icon={Trophy}
+            icon={Activity}
             label="Evaluar"
           />
         </div>
@@ -559,7 +606,7 @@ export default function SessionDetailPage() {
           </div>
         )}
 
-        {/* --- TAB: PIZARRA TÁCTICA (NUEVO REPRODUCTOR) --- */}
+        {/* --- TAB: PIZARRA TÁCTICA --- */}
         {activeTab === "TACTICS" && (
           <div className="space-y-6 pb-24">
             {tacticalBoards.length === 0 ? (
@@ -573,8 +620,7 @@ export default function SessionDetailPage() {
                   key={tb.id}
                   className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"
                 >
-                  {/* Header Pizarra */}
-                  <div className="p-4 border-b border-gray-100 bg-gray-50">
+                  <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-col">
                     <h3 className="font-bold text-[#312E81] text-lg">
                       {tb.tacticalBoard.title}
                     </h3>
@@ -584,8 +630,6 @@ export default function SessionDetailPage() {
                       </p>
                     )}
                   </div>
-
-                  {/* Reproductor Canvas */}
                   <TacticalPlayer
                     initialState={tb.tacticalBoard.initialState}
                     animation={tb.tacticalBoard.animation}
@@ -598,127 +642,173 @@ export default function SessionDetailPage() {
 
         {/* --- TAB: EVALUACIÓN --- */}
         {activeTab === "EVALUATION" && (
-          <div className="pb-32 space-y-4 animate-in fade-in slide-in-from-right-4">
-            {/* Header Informativo */}
-            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex gap-3 items-start">
-              <div className="bg-amber-100 p-2 rounded-full">
-                <Trophy className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm text-amber-900 font-bold">
-                  Rendimiento del Jugador
-                </p>
-                <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                  Califica del 1 al 5. Los jugadores ausentes no pueden ser
-                  evaluados. Esta información es privada para el staff técnico.
-                </p>
-              </div>
+          <div className="pb-32 space-y-6 animate-in fade-in slide-in-from-right-4">
+            <div>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-emerald-500" /> 1. Selecciona la
+                Prueba
+              </h3>
+              {protocols.length === 0 ? (
+                <div className="p-4 bg-gray-100 rounded-xl text-xs text-gray-500 text-center">
+                  No hay pruebas configuradas en el sistema.
+                </div>
+              ) : (
+                <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar custom-scrollbar">
+                  {protocols.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedProtocol(p)}
+                      className={`whitespace-nowrap px-4 py-3 rounded-xl text-sm font-bold transition-all border-2 flex flex-col items-start min-w-[140px]
+                        ${selectedProtocol?.id === p.id ? "bg-[#312E81] border-[#312E81] text-white shadow-md transform scale-[0.98]" : "bg-white border-gray-100 text-gray-600 hover:border-indigo-200"}`}
+                    >
+                      <span className="block truncate w-full text-left">
+                        {p.name}
+                      </span>
+                      <span
+                        className={`text-[10px] mt-1 uppercase tracking-wider ${selectedProtocol?.id === p.id ? "text-indigo-200" : "text-gray-400"}`}
+                      >
+                        Unidad: {UNIT_LABELS[p.unit] || p.unit}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Lista de Jugadores para Evaluar */}
-            <div className="space-y-3">
-              {players.map((player) => {
-                const isAbsent = attendanceMap[player.id] === "ABSENT";
-                const currentRating = ratingsMap[player.id] || 0;
+            {selectedProtocol ? (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center mb-2 px-1">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    2. Ingreso de Resultados
+                  </h3>
+                  <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md">
+                    {
+                      Object.values(evalValuesMap).filter((v) => v !== "")
+                        .length
+                    }{" "}
+                    / {players.length}
+                  </span>
+                </div>
 
-                return (
-                  <div
-                    key={player.id}
-                    className={`bg-white p-4 rounded-xl shadow-sm border transition-all ${
-                      isAbsent
-                        ? "border-gray-100 opacity-60 grayscale bg-gray-50"
-                        : "border-gray-200 hover:border-indigo-300"
-                    }`}
-                  >
-                    {/* Cabecera Card: Avatar + Nombre + Estrellas */}
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar player={player} />
-                        <div>
-                          <h3 className="font-bold text-gray-800 text-sm">
-                            {player.firstName} {player.lastName}
-                          </h3>
-                          <p className="text-xs text-gray-400 font-medium">
-                            {isAbsent ? (
-                              <span className="text-red-400 font-bold">
-                                AUSENTE
-                              </span>
-                            ) : (
-                              "Delantero"
-                            )}
-                          </p>
+                {players.map((player) => {
+                  const isAbsent = attendanceMap[player.id] === "ABSENT";
+                  const currentRating = ratingsMap[player.id] || 0;
+
+                  return (
+                    <div
+                      key={player.id}
+                      className={`relative bg-white p-4 rounded-2xl shadow-sm border transition-all overflow-hidden ${isAbsent ? "border-red-100 bg-red-50/30 opacity-60" : "border-gray-200 focus-within:border-[#10B981] focus-within:ring-4 focus-within:ring-emerald-50"}`}
+                    >
+                      {isAbsent && (
+                        <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded-bl-lg">
+                          AUSENTE
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center gap-4">
+                        <div className="flex flex-col gap-2 flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <Avatar player={player} />
+                            <div className="truncate">
+                              <h3 className="font-bold text-gray-800 text-sm truncate">
+                                {player.firstName} {player.lastName}
+                              </h3>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-1">
+                            {!isAbsent &&
+                              [1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  onClick={() => handleRating(player.id, star)}
+                                  className="focus:outline-none transition-transform active:scale-110 p-1"
+                                  type="button"
+                                >
+                                  <Star
+                                    className={`w-4 h-4 transition-colors ${currentRating >= star ? "fill-amber-400 text-amber-400" : "text-gray-200 fill-gray-50"}`}
+                                  />
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end">
+                          <div className="flex items-baseline gap-1 bg-gray-50 rounded-xl p-2 border border-gray-100 shadow-inner">
+                            <input
+                              type="number"
+                              step="0.01"
+                              disabled={isAbsent}
+                              placeholder="0.0"
+                              className="w-20 bg-transparent text-right text-3xl font-black text-[#312E81] focus:outline-none disabled:text-gray-400 placeholder-gray-300"
+                              value={evalValuesMap[player.id] || ""}
+                              onChange={(e) =>
+                                setEvalValuesMap((prev) => ({
+                                  ...prev,
+                                  [player.id]: e.target.value,
+                                }))
+                              }
+                            />
+                            <span className="text-xs font-bold text-gray-400 mr-1">
+                              {UNIT_LABELS[selectedProtocol.unit] ||
+                                selectedProtocol.unit}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Selector de Estrellas */}
-                      <div className="flex gap-1">
-                        {!isAbsent &&
-                          [1, 2, 3, 4, 5].map((star) => (
-                            <button
-                              key={star}
-                              onClick={() => handleRating(player.id, star)}
-                              className="focus:outline-none transition-transform active:scale-110 p-1"
-                              type="button"
-                            >
-                              <Star
-                                className={`w-6 h-6 transition-colors ${
-                                  currentRating >= star
-                                    ? "fill-amber-400 text-amber-400 drop-shadow-sm"
-                                    : "text-gray-200 fill-gray-50"
-                                }`}
-                              />
-                            </button>
-                          ))}
-                      </div>
+                      {!isAbsent && (
+                        <div className="mt-3 relative group">
+                          <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300 group-focus-within:text-indigo-500" />
+                          <input
+                            type="text"
+                            placeholder="Anota observaciones técnicas aquí..."
+                            disabled={isAbsent}
+                            className="w-full bg-transparent border border-gray-100 rounded-lg py-2 pl-9 pr-3 text-xs text-gray-600 focus:bg-white focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 transition-colors"
+                            value={feedbackMap[player.id] || ""}
+                            onChange={(e) =>
+                              setFeedbackMap((prev) => ({
+                                ...prev,
+                                [player.id]: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      )}
                     </div>
-
-                    {/* Input de Feedback (Solo si no está ausente) */}
-                    {!isAbsent && (
-                      <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <MessageSquare className="h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
-                        </div>
-                        <input
-                          type="text"
-                          placeholder="Nota técnica (ej: Mejorar control orientado)..."
-                          disabled={isAbsent}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-9 pr-4 text-xs font-medium text-gray-700 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                          value={feedbackMap[player.id] || ""}
-                          // ✅ Actualización del estado
-                          onChange={(e) =>
-                            setFeedbackMap((prev) => ({
-                              ...prev,
-                              [player.id]: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Botón Flotante Guardar */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-gray-200 lg:static lg:bg-transparent lg:border-none lg:p-0 z-40">
-              <div className="max-w-2xl mx-auto">
-                <button
-                  onClick={saveEvaluations}
-                  disabled={isSaving}
-                  className="w-full bg-[#312E81] hover:bg-indigo-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="animate-spin w-5 h-5" /> Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-5 h-5" /> Guardar Evaluaciones
-                    </>
-                  )}
-                </button>
+                  );
+                })}
               </div>
-            </div>
+            ) : (
+              <EmptyState
+                icon={Trophy}
+                message="Selecciona una prueba arriba para ingresar resultados."
+              />
+            )}
+
+            {selectedProtocol && (
+              <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-transparent lg:static lg:bg-none lg:p-0 z-40">
+                <div className="max-w-2xl mx-auto">
+                  <button
+                    onClick={saveEvaluations}
+                    disabled={isSaving}
+                    className="w-full bg-[#10B981] hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="animate-spin w-5 h-5" /> Guardando
+                        datos...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5" /> Guardar Evaluaciones (
+                        {selectedProtocol.name})
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -727,7 +817,7 @@ export default function SessionDetailPage() {
 }
 
 // ---------------------------------------------------------------------------
-// 4. COMPONENTE REPRODUCTOR DE TÁCTICA
+// 4. COMPONENTE REPRODUCTOR DE TÁCTICA MEJORADO (PIZARRA)
 // ---------------------------------------------------------------------------
 
 const TacticalPlayer = ({
@@ -740,20 +830,27 @@ const TacticalPlayer = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Estados de reproducción
+  // Parseo defensivo por si los datos vienen como String (GraphQL a veces devuelve JSON como String)
+  let parsedState = initialState;
+  let parsedAnim = animation;
+  try {
+    if (typeof initialState === "string")
+      parsedState = JSON.parse(initialState);
+  } catch (e) {}
+  try {
+    if (typeof animation === "string") parsedAnim = JSON.parse(animation);
+  } catch (e) {}
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(0);
-  const [currentTokens, setCurrentTokens] = useState(
-    initialState?.tokens || [],
-  );
+  const [currentTokens, setCurrentTokens] = useState(parsedState?.tokens || []);
   const [currentStrokes, setCurrentStrokes] = useState(
-    initialState?.strokes || [],
+    parsedState?.strokes || [],
   );
 
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const FRAME_RATE_MS = 50;
 
-  // Dibujar en Canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -761,7 +858,7 @@ const TacticalPlayer = ({
 
     if (!canvas || !ctx || !container) return;
 
-    // Ajustar tamaño
+    // Asegurarse de que el canvas ocupa todo el contenedor correctamente
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
 
@@ -770,7 +867,6 @@ const TacticalPlayer = ({
     ctx.lineJoin = "round";
     ctx.lineWidth = 3;
 
-    // Dibujar Trazos
     currentStrokes.forEach((stroke: any) => {
       ctx.beginPath();
       ctx.strokeStyle = stroke.color;
@@ -782,20 +878,25 @@ const TacticalPlayer = ({
       }
       ctx.stroke();
     });
-  }, [currentStrokes, currentTokens]); // Redibujar cuando cambian
+  }, [currentStrokes, currentTokens]);
 
-  // Lógica de Animación
+  // Manejar redimensionamiento de pantalla para repintar trazos
   useEffect(() => {
-    if (isPlaying && animation && animation.length > 0) {
+    const handleResize = () => setCurrentStrokes([...currentStrokes]);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [currentStrokes]);
+
+  useEffect(() => {
+    if (isPlaying && parsedAnim && parsedAnim.length > 0) {
       playbackIntervalRef.current = setInterval(() => {
         setPlaybackIndex((prev) => {
           const next = prev + 1;
-          if (next >= animation.length) {
+          if (next >= parsedAnim.length) {
             setIsPlaying(false);
             return prev;
           }
-          // Actualizar estado visual con el frame actual
-          const frame = animation[next];
+          const frame = parsedAnim[next];
           setCurrentTokens(frame.tokens);
           setCurrentStrokes(frame.strokes);
           return next;
@@ -809,85 +910,123 @@ const TacticalPlayer = ({
       if (playbackIntervalRef.current)
         clearInterval(playbackIntervalRef.current);
     };
-  }, [isPlaying, animation]);
+  }, [isPlaying, parsedAnim]);
 
   const handlePlayPause = () => {
-    if (!animation || animation.length === 0) return;
-    if (playbackIndex >= animation.length - 1) setPlaybackIndex(0); // Reiniciar si terminó
+    if (!parsedAnim || parsedAnim.length === 0) return;
+    if (playbackIndex >= parsedAnim.length - 1) setPlaybackIndex(0);
     setIsPlaying(!isPlaying);
   };
 
   const handleReset = () => {
     setIsPlaying(false);
     setPlaybackIndex(0);
-    setCurrentTokens(initialState.tokens);
-    setCurrentStrokes(initialState.strokes);
+    setCurrentTokens(parsedState.tokens || []);
+    setCurrentStrokes(parsedState.strokes || []);
   };
 
   return (
     <div
-      className="relative w-full aspect-[4/3] bg-[#2c8f43] border-t-4 border-b-4 border-[#1a5c2b] overflow-hidden"
+      className="relative w-full aspect-[16/10] sm:aspect-[4/3] bg-[#2c8f43] border-[6px] border-white shadow-inner overflow-hidden select-none"
       ref={containerRef}
+      style={{
+        backgroundImage:
+          "repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,255,255,0.15) 50px, rgba(255,255,255,0.15) 52px)",
+      }}
     >
-      {/* Fondo Cancha */}
-      <div className="absolute inset-0 pointer-events-none opacity-60">
-        <div className="absolute top-1/2 left-1/2 w-[20%] h-[25%] border-2 border-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute top-1/2 w-full h-0.5 bg-white"></div>
+      {/* --- LINEAS DE LA CANCHA --- */}
+      <div className="absolute inset-0 pointer-events-none opacity-80">
+        <div className="absolute top-1/2 left-1/2 w-[15%] h-[20%] min-w-[80px] min-h-[80px] border-2 border-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute top-1/2 w-full h-0.5 bg-white/70"></div>
+        <div className="absolute top-0 left-1/2 w-[30%] h-[15%] border-2 border-t-0 border-white -translate-x-1/2"></div>
+        <div className="absolute bottom-0 left-1/2 w-[30%] h-[15%] border-2 border-b-0 border-white -translate-x-1/2"></div>
       </div>
 
-      {/* Canvas de Dibujos */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 z-10 pointer-events-none"
       />
 
-      {/* Tokens (Jugadores) */}
+      {/* --- TOKENS (JUGADORES, PELOTA, ARCOS) --- */}
       {currentTokens.map((token: any) => (
         <div
           key={token.id}
-          className={`
-                        absolute flex items-center justify-center w-6 h-6 rounded-full font-bold text-[10px] shadow-sm z-20 transition-all duration-[50ms] ease-linear
-                        ${token.type === "team-a" ? "bg-red-600 text-white border border-white" : ""}
-                        ${token.type === "team-b" ? "bg-blue-600 text-white border border-white" : ""}
-                        ${token.type === "ball" ? "bg-white text-black border border-black w-3 h-3" : ""}
-                        ${token.type === "cone" ? "bg-orange-500 w-4 h-4 rounded-none clip-path-triangle" : ""}
-                    `}
+          className={`absolute flex flex-col items-center justify-center z-20 transition-all ease-linear`}
           style={{
             left: `${token.x}%`,
             top: `${token.y}%`,
             transform: "translate(-50%, -50%)",
+            transitionDuration: isPlaying ? `${FRAME_RATE_MS}ms` : "0s",
           }}
         >
-          {(token.type === "team-a" || token.type === "team-b") && token.label}
+          <div
+            className={`
+              flex items-center justify-center shadow-md
+              ${token.type === "team-a" ? "bg-red-600 text-white border-2 border-white w-7 h-7 sm:w-9 sm:h-9 rounded-full font-bold text-xs sm:text-sm" : ""}
+              ${token.type === "team-b" ? "bg-blue-600 text-white border-2 border-white w-7 h-7 sm:w-9 sm:h-9 rounded-full font-bold text-xs sm:text-sm" : ""}
+              ${token.type === "ball" ? "bg-white text-black border-2 border-black w-4 h-4 sm:w-5 sm:h-5 rounded-full z-30" : ""}
+              ${token.type === "cone" ? "bg-orange-500 w-5 h-5 sm:w-6 sm:h-6 border border-white/50" : ""}
+              ${token.type === "goal" ? "bg-transparent border-4 border-white/80 w-24 h-12 rounded-sm shadow-none" : ""}
+            `}
+            style={{
+              clipPath:
+                token.type === "cone"
+                  ? "polygon(50% 0%, 0% 100%, 100% 100%)"
+                  : "none",
+            }}
+          >
+            {(token.type === "team-a" || token.type === "team-b") &&
+              token.label}
+          </div>
+
+          {/* Renderizado de Nombres si es que se asignaron usando "Alinear Plantel" */}
+          {token.playerName && (
+            <span className="mt-1 bg-white/90 text-gray-900 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded pointer-events-none whitespace-nowrap shadow-sm border border-gray-200">
+              {token.playerName}
+            </span>
+          )}
         </div>
       ))}
 
-      {/* Controles */}
-      <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2 z-30">
+      {/* --- CONTROLES DE REPRODUCCIÓN MEJORADOS --- */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-gray-200 w-[90%] max-w-[300px] z-30">
         <button
           onClick={handlePlayPause}
-          disabled={!animation}
-          className="bg-black/60 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm transition-colors disabled:opacity-50"
+          disabled={!parsedAnim || parsedAnim.length === 0}
+          className="bg-[#312E81] hover:bg-indigo-700 text-white p-2.5 rounded-full transition-colors disabled:opacity-50 disabled:bg-gray-400 shadow-md active:scale-95"
         >
-          {isPlaying ? <PauseCircle size={20} /> : <PlayCircle size={20} />}
+          {isPlaying ? (
+            <PauseCircle size={20} fill="currentColor" />
+          ) : (
+            <PlayCircle size={20} fill="currentColor" />
+          )}
         </button>
-
         <button
           onClick={handleReset}
-          className="bg-black/60 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm transition-colors"
+          className="bg-gray-100 hover:bg-gray-200 text-gray-700 p-2.5 rounded-full transition-colors border border-gray-200 active:scale-95"
         >
           <RotateCcw size={16} />
         </button>
 
-        {/* Barra de Progreso */}
-        {animation && (
-          <div className="flex-1 h-1.5 bg-black/30 rounded-full overflow-hidden backdrop-blur-sm">
-            <div
-              className="h-full bg-white transition-all duration-[50ms] ease-linear"
-              style={{
-                width: `${(playbackIndex / (animation.length - 1)) * 100}%`,
+        {parsedAnim && parsedAnim.length > 0 ? (
+          <div className="flex-1 flex items-center pr-2">
+            <input
+              type="range"
+              min="0"
+              max={parsedAnim.length - 1}
+              value={playbackIndex}
+              onChange={(e) => {
+                setPlaybackIndex(Number(e.target.value));
+                const frame = parsedAnim[Number(e.target.value)];
+                setCurrentTokens(frame.tokens);
+                setCurrentStrokes(frame.strokes);
               }}
-            ></div>
+              className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-[#312E81]"
+            />
+          </div>
+        ) : (
+          <div className="flex-1 text-xs text-gray-400 font-bold px-2 text-center uppercase">
+            Sin animación
           </div>
         )}
       </div>
@@ -903,7 +1042,11 @@ function TabItem({ active, onClick, icon: Icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center min-w-[4.5rem] py-2 px-1 rounded-xl transition-all ${active ? "bg-indigo-50 text-[#312E81]" : "text-gray-400 hover:bg-gray-50"}`}
+      className={`flex flex-col items-center justify-center min-w-[4.5rem] py-2 px-1 rounded-xl transition-all ${
+        active
+          ? "bg-indigo-50 text-[#312E81]"
+          : "text-gray-400 hover:bg-gray-50"
+      }`}
     >
       <Icon
         className={`w-5 h-5 mb-1 ${active ? "stroke-[2.5px]" : "stroke-2"}`}
@@ -924,7 +1067,11 @@ function AttendanceBtn({ status, current, onClick }: any) {
   return (
     <button
       onClick={onClick}
-      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${active ? `${bg} text-white shadow-md` : "bg-gray-50 text-gray-300"}`}
+      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+        active
+          ? `${bg} text-white shadow-md`
+          : "bg-gray-50 text-gray-300 hover:bg-gray-100"
+      }`}
     >
       <Icon className="w-5 h-5" strokeWidth={active ? 3 : 2} />
     </button>
@@ -933,7 +1080,7 @@ function AttendanceBtn({ status, current, onClick }: any) {
 
 function Avatar({ player }: any) {
   return (
-    <div className="w-10 h-10 rounded-full bg-indigo-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center">
+    <div className="w-10 h-10 rounded-full bg-indigo-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center shrink-0">
       {player.photoUrl ? (
         <img
           src={player.photoUrl}
@@ -941,7 +1088,7 @@ function Avatar({ player }: any) {
           className="w-full h-full object-cover"
         />
       ) : (
-        <span className="text-[#312E81] text-xs font-bold">
+        <span className="text-[#312E81] text-xs font-bold uppercase">
           {player.firstName[0]}
         </span>
       )}
@@ -962,13 +1109,24 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 pt-12 animate-pulse">
       <div className="h-40 bg-gray-200 rounded-3xl mb-8"></div>
+      <div className="h-10 bg-gray-200 rounded-xl mb-4 w-1/2"></div>
+      <div className="space-y-3">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-16 bg-gray-200 rounded-xl w-full"></div>
+        ))}
+      </div>
     </div>
   );
 }
+
 function ErrorScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 text-center text-red-500 font-bold">
-      Error de Carga
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center text-red-500">
+      <AlertCircle className="w-12 h-12 mb-4" />
+      <h2 className="text-xl font-bold mb-2">Error de Carga</h2>
+      <p className="text-sm opacity-80">
+        Hubo un problema al cargar los datos de la sesión. Revisa tu conexión.
+      </p>
     </div>
   );
 }

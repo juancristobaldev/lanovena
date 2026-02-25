@@ -65,7 +65,7 @@ const GET_GUARDIAN_HOME = gql`
         lastName
         photoUrl
         active
-        attendace {
+        attendance {
           id
           status
           notes
@@ -330,39 +330,6 @@ export default function GuardianDashboardPage() {
               </div>
             </section>
 
-            {/* NOVEDADES */}
-            <section>
-              <div className="flex items-center gap-2 mb-4 px-2">
-                <Newspaper size={18} className="text-[#312E81]" />
-                <h3 className="font-bold text-gray-800">Tablón de Novedades</h3>
-              </div>
-              <div className="grid gap-3">
-                {[1].map((i) => (
-                  <div
-                    key={i}
-                    className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group flex items-center gap-4"
-                  >
-                    <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-[#312E81] shrink-0 group-hover:scale-110 transition-transform">
-                      <Newspaper size={20} />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-900 text-sm group-hover:text-[#312E81] transition-colors">
-                        Información Importante
-                      </h4>
-                      <p className="text-xs text-gray-500 line-clamp-1">
-                        Recordar llevar botella de agua individual a los
-                        entrenamientos...
-                      </p>
-                    </div>
-                    <ChevronRight
-                      size={16}
-                      className="text-gray-300 group-hover:text-[#312E81]"
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-
             {/* SECCIÓN DE ASISTENCIA */}
             <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-6 border-b border-gray-50 flex justify-between items-center">
@@ -413,68 +380,70 @@ export default function GuardianDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {currentPlayer.attendace?.length > 0 ? (
-                      currentPlayer.attendace.slice(0, 5).map((record: any) => {
-                        const statusInfo =
-                          ATTENDANCE_STATUS[
-                            record.status as keyof typeof ATTENDANCE_STATUS
-                          ] || ATTENDANCE_STATUS.PRESENT;
-                        const date = new Date(record.createdAt);
+                    {currentPlayer.attendance?.length > 0 ? (
+                      currentPlayer.attendance
+                        .slice(0, 5)
+                        .map((record: any) => {
+                          const statusInfo =
+                            ATTENDANCE_STATUS[
+                              record.status as keyof typeof ATTENDANCE_STATUS
+                            ] || ATTENDANCE_STATUS.PRESENT;
+                          const date = new Date(record.createdAt);
 
-                        return (
-                          <tr
-                            key={record.id}
-                            className="hover:bg-gray-50/50 transition-colors group"
-                          >
-                            <td className="px-6 py-4">
-                              <p className="text-sm font-bold text-gray-900 capitalize">
-                                {date.toLocaleDateString("es-CL", {
-                                  weekday: "short",
-                                  day: "2-digit",
-                                  month: "short",
-                                })}
-                              </p>
-                              <p className="text-[10px] text-gray-500 font-medium">
-                                Sesión #{record.sessionId || "---"}
-                              </p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-tight ${statusInfo.color}`}
-                              >
-                                {statusInfo.icon}
-                                {statusInfo.label}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 hidden md:table-cell">
-                              {record.rating ? (
-                                <div className="flex gap-0.5">
-                                  {[...Array(5)].map((_, i) => (
-                                    <Trophy
-                                      key={i}
-                                      size={12}
-                                      className={
-                                        i < record.rating
-                                          ? "text-amber-400 fill-amber-400"
-                                          : "text-gray-200"
-                                      }
-                                    />
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-[10px] text-gray-400 italic">
-                                  Sin nota
+                          return (
+                            <tr
+                              key={record.id}
+                              className="hover:bg-gray-50/50 transition-colors group"
+                            >
+                              <td className="px-6 py-4">
+                                <p className="text-sm font-bold text-gray-900 capitalize">
+                                  {date.toLocaleDateString("es-CL", {
+                                    weekday: "short",
+                                    day: "2-digit",
+                                    month: "short",
+                                  })}
+                                </p>
+                                <p className="text-[10px] text-gray-500 font-medium">
+                                  Sesión #{record.sessionId || "---"}
+                                </p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-tight ${statusInfo.color}`}
+                                >
+                                  {statusInfo.icon}
+                                  {statusInfo.label}
                                 </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <button className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-400 hover:text-[#312E81]">
-                                <ChevronRight size={18} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
+                              </td>
+                              <td className="px-6 py-4 hidden md:table-cell">
+                                {record.rating ? (
+                                  <div className="flex gap-0.5">
+                                    {[...Array(5)].map((_, i) => (
+                                      <Trophy
+                                        key={i}
+                                        size={12}
+                                        className={
+                                          i < record.rating
+                                            ? "text-amber-400 fill-amber-400"
+                                            : "text-gray-200"
+                                        }
+                                      />
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] text-gray-400 italic">
+                                    Sin nota
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <button className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-400 hover:text-[#312E81]">
+                                  <ChevronRight size={18} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
                     ) : (
                       <tr>
                         <td colSpan={4} className="px-6 py-12 text-center">

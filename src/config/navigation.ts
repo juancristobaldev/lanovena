@@ -104,6 +104,11 @@ export const MENU_ITEMS = {
   ],
   COACH: [
     // Entrenador
+    {
+      title: "Noticias",
+      href: "/dashboard/coach/notices",
+      icon: Newspaper,
+    },
     { title: "Mis Categorías", href: "/dashboard/coach", icon: Users },
     {
       title: "Planificar",
@@ -136,6 +141,11 @@ export const MENU_ITEMS = {
   GUARDIAN: [
     // Apoderado
     { title: "Mis Jugadores", href: "/dashboard/guardian", icon: Baby },
+    {
+      title: "Noticias",
+      href: "/dashboard/director/notices",
+      icon: Newspaper,
+    },
     {
       title: "Identificaciones",
       href: "/dashboard/guardian/carnet",

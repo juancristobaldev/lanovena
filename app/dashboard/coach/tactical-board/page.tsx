@@ -27,14 +27,27 @@ import {
   Trash2,
   Edit3,
   Search,
+  Users,
+  ShieldCheck,
+  UserPlus,
+  CheckCircle2,
 } from "lucide-react";
 import { gql } from "@apollo/client";
 import { useMutation, useQuery, useLazyQuery } from "@apollo/client/react";
 import { useAlert } from "@/src/providers/alert";
 
+// --- COLORS CONSTANTS ---
+const COLORS = {
+  indigo: "#312e81",
+  green: "#10b981",
+  light: "#f9fafb",
+  white: "#ffffff",
+  textMain: "#1f2937",
+  textLight: "#6b7280",
+};
+
 // --- GRAPHQL ---
 
-// 1. Obtener Categorías (Para el select y filtros)
 const GET_COACH_CATEGORIES = gql`
   query GetCoachCategoriesForBoard {
     meCoach {
@@ -60,7 +73,6 @@ const GET_PLAYERS_BY_CATEGORY = gql`
   }
 `;
 
-// 2. Obtener Pizarras por Categoría (Para la biblioteca)
 const GET_BOARDS_BY_CATEGORY = gql`
   query GetBoardsByCategory($categoryId: ID!) {
     tacticalBoardsByCategory(categoryId: $categoryId) {
@@ -74,7 +86,6 @@ const GET_BOARDS_BY_CATEGORY = gql`
   }
 `;
 
-// 3. Crear
 const CREATE_TACTICAL_BOARD = gql`
   mutation CreateTacticalBoard($input: CreateTacticalBoardInput!) {
     createTacticalBoard(input: $input) {
@@ -84,7 +95,6 @@ const CREATE_TACTICAL_BOARD = gql`
   }
 `;
 
-// 4. Actualizar
 const UPDATE_TACTICAL_BOARD = gql`
   mutation UpdateTacticalBoard($input: UpdateTacticalBoardInput!) {
     updateTacticalBoard(input: $input) {
@@ -94,7 +104,6 @@ const UPDATE_TACTICAL_BOARD = gql`
   }
 `;
 
-// 5. Eliminar
 const DELETE_TACTICAL_BOARD = gql`
   mutation RemoveTacticalBoard($id: ID!) {
     removeTacticalBoard(id: $id) {
@@ -110,6 +119,7 @@ interface Token {
   id: string;
   type: TokenType;
   label?: string;
+  playerName?: string;
   x: number;
   y: number;
   rotation?: number;
@@ -131,6 +141,67 @@ interface Frame {
   currentStroke: Stroke | null;
 }
 
+// --- CONFIGURACIÓN DE FORMACIONES (X, Y) ---
+const FORMATIONS: Record<string, { x: number; y: number }[]> = {
+  "F11: 4-3-3": [
+    { x: 50, y: 90 }, // POR
+    { x: 20, y: 75 },
+    { x: 40, y: 80 },
+    { x: 60, y: 80 },
+    { x: 80, y: 75 }, // DEF
+    { x: 30, y: 55 },
+    { x: 50, y: 60 },
+    { x: 70, y: 55 }, // MED
+    { x: 20, y: 35 },
+    { x: 50, y: 30 },
+    { x: 80, y: 35 }, // DEL
+  ],
+  "F11: 4-4-2": [
+    { x: 50, y: 90 },
+    { x: 20, y: 75 },
+    { x: 40, y: 80 },
+    { x: 60, y: 80 },
+    { x: 80, y: 75 },
+    { x: 15, y: 55 },
+    { x: 40, y: 55 },
+    { x: 60, y: 55 },
+    { x: 85, y: 55 },
+    { x: 35, y: 35 },
+    { x: 65, y: 35 },
+  ],
+  "F11: 3-5-2": [
+    { x: 50, y: 90 },
+    { x: 30, y: 75 },
+    { x: 50, y: 80 },
+    { x: 70, y: 75 },
+    { x: 15, y: 50 },
+    { x: 35, y: 55 },
+    { x: 50, y: 60 },
+    { x: 65, y: 55 },
+    { x: 85, y: 50 },
+    { x: 35, y: 30 },
+    { x: 65, y: 30 },
+  ],
+  "F7: 2-3-1": [
+    { x: 50, y: 90 },
+    { x: 35, y: 75 },
+    { x: 65, y: 75 },
+    { x: 20, y: 55 },
+    { x: 50, y: 55 },
+    { x: 80, y: 55 },
+    { x: 50, y: 35 },
+  ],
+};
+
+// --- UTILIDAD PARA LIMPIAR OBJETOS DE APOLLO ANTES DE GUARDAR ---
+const cleanObject = (obj: any) => {
+  return JSON.parse(
+    JSON.stringify(obj, (key, value) =>
+      key === "__typename" ? undefined : value,
+    ),
+  );
+};
+
 // --- PÁGINA PRINCIPAL ---
 export default function TacticalBoardPage() {
   const router = useRouter();
@@ -139,7 +210,7 @@ export default function TacticalBoardPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // --- ESTADO DE GESTIÓN (CRUD) ---
-  const [activeBoardId, setActiveBoardId] = useState<string | null>(null); // Null = Modo Creación
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
 
@@ -147,10 +218,27 @@ export default function TacticalBoardPage() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState("");
 
+  // --- ESTADO DE SELECCIÓN DE FORMACIÓN (MODALES) ---
+  const [pendingFormation, setPendingFormation] = useState<string | null>(null);
+  const [showDeploymentChoice, setShowDeploymentChoice] = useState(false);
+  const [showManualSelector, setShowManualSelector] = useState(false);
+  const [manualAssignments, setManualAssignments] = useState<
+    Record<number, any>
+  >({});
+  const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
+
   // --- QUERIES & MUTATIONS ---
   const { data: catData }: any = useQuery(GET_COACH_CATEGORIES);
 
-  // Lazy Query para buscar pizarras solo cuando se abre la librería o cambia el filtro
+  const { data: playersData, loading: loadingPlayers }: any = useQuery(
+    GET_PLAYERS_BY_CATEGORY,
+    {
+      variables: { categoryId: selectedCategoryId },
+      skip: !selectedCategoryId,
+      fetchPolicy: "cache-first",
+    },
+  );
+
   const [
     fetchBoards,
     { data: boardsData, loading: loadingBoards, refetch: refetchBoards },
@@ -188,14 +276,13 @@ export default function TacticalBoardPage() {
   const FRAME_RATE_MS = 50;
   const TRANSITION_DURATION_MS = 100;
 
-  // --- EFECTOS DE BIBLIOTECA ---
+  // --- EFECTOS ---
   useEffect(() => {
     if (isLibraryOpen && libraryCategoryFilter) {
       fetchBoards({ variables: { categoryId: libraryCategoryFilter } });
     }
   }, [isLibraryOpen, libraryCategoryFilter, fetchBoards]);
 
-  // Si cargan categorías y no hay filtro, poner la primera por defecto
   useEffect(() => {
     if (categories.length > 0 && !libraryCategoryFilter) {
       setLibraryCategoryFilter(categories[0].id);
@@ -204,13 +291,11 @@ export default function TacticalBoardPage() {
 
   // --- INICIALIZACIÓN ---
   const initBoard = () => {
-    // Resetear todo a modo "Nueva Pizarra"
     setActiveBoardId(null);
     setTitle("");
-    // No reseteamos la categoría seleccionada para comodidad del usuario
-
     const newTokens: Token[] = [];
-    // Equipo A
+
+    // Plantilla base 5v5 como tenías originalmente
     for (let i = 1; i <= 5; i++) {
       newTokens.push({
         id: `a-${i}-${Date.now()}`,
@@ -220,7 +305,6 @@ export default function TacticalBoardPage() {
         y: 20,
       });
     }
-    // Equipo B
     for (let i = 1; i <= 5; i++) {
       newTokens.push({
         id: `b-${i}-${Date.now()}`,
@@ -230,7 +314,6 @@ export default function TacticalBoardPage() {
         y: 80,
       });
     }
-    // Pelota y Arcos
     newTokens.push({ id: `ball-${Date.now()}`, type: "ball", x: 50, y: 50 });
     newTokens.push({ id: "goal-top", type: "goal", x: 50, y: 5 });
     newTokens.push({ id: "goal-bottom", type: "goal", x: 50, y: 95 });
@@ -245,31 +328,39 @@ export default function TacticalBoardPage() {
   };
 
   const loadBoard = (board: any) => {
-    // Cargar datos del backend al estado local
     setActiveBoardId(board.id);
     setTitle(board.title);
-    setSelectedCategoryId(libraryCategoryFilter); // Asumimos que viene del filtro actual
+    setSelectedCategoryId(libraryCategoryFilter);
 
-    // Parsear JSONs (Prisma devuelve objetos JSON, Apollo a veces los trata diferente)
-    const initialState = board.initialState;
-    const animation = board.animation;
+    // Parseo defensivo por si el backend lo devuelve como String
+    let initialState = board.initialState;
+    let animation = board.animation;
+
+    if (typeof initialState === "string") {
+      try {
+        initialState = JSON.parse(initialState);
+      } catch (e) {}
+    }
+    if (typeof animation === "string") {
+      try {
+        animation = JSON.parse(animation);
+      } catch (e) {}
+    }
 
     if (initialState) {
       setTokens(initialState.tokens || []);
       setStrokes(initialState.strokes || []);
     }
-
     if (animation && Array.isArray(animation)) {
       setRecordedFrames(animation);
     } else {
       setRecordedFrames([]);
     }
 
-    // Resetear estados de reproducción
     setIsPlaying(false);
     setIsRecording(false);
     setPlaybackIndex(0);
-    setIsLibraryOpen(false); // Cerrar modal
+    setIsLibraryOpen(false);
     showAlert("Estrategia cargada correctamente", "success");
   };
 
@@ -280,6 +371,109 @@ export default function TacticalBoardPage() {
     setTimeout(handleResize, 100);
     return () => window.removeEventListener("resize", handleResizeWindow);
   }, []);
+
+  // --- 1. MANEJO DE SELECCIÓN DE FORMACIÓN ---
+  const handleFormationSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const form = e.target.value;
+    if (!form) return;
+
+    if (
+      !playersData?.playersByCategory ||
+      playersData.playersByCategory.length === 0
+    ) {
+      e.target.value = "";
+      return showAlert("No hay jugadores en esta categoría", "warning");
+    }
+
+    setPendingFormation(form);
+    setShowDeploymentChoice(true);
+    e.target.value = "";
+  };
+
+  // --- 2. DESPLIEGUE AUTOMÁTICO ---
+  const deployAutomatic = () => {
+    if (!pendingFormation) return;
+    setShowDeploymentChoice(false);
+
+    const players = [...playersData.playersByCategory];
+    const posOrder: Record<string, number> = { GK: 1, DEF: 2, MID: 3, FW: 4 };
+
+    players.sort((a, b) => {
+      const posA = a.position || "";
+      const posB = b.position || "";
+      return (posOrder[posA] || 99) - (posOrder[posB] || 99);
+    });
+
+    const positions = FORMATIONS[pendingFormation];
+    const preservedTokens = tokens.filter((t) => t.type !== "team-a");
+
+    const teamATokens: Token[] = players
+      .slice(0, positions.length)
+      .map((p, i) => ({
+        id: `a-${p.id}-${Date.now()}`,
+        type: "team-a",
+        label: `${i + 1}`,
+        playerName: p.lastName || p.firstName,
+        x: positions[i].x,
+        y: positions[i].y,
+      }));
+
+    setTokens([...preservedTokens, ...teamATokens]);
+    showAlert(
+      `Plantel alineado automáticamente en ${pendingFormation}`,
+      "success",
+    );
+    setMode("move");
+    setPendingFormation(null);
+  };
+
+  // --- 3. DESPLIEGUE MANUAL ---
+  const openManualSelector = () => {
+    setShowDeploymentChoice(false);
+    setManualAssignments({});
+    setActiveSlotIndex(null);
+    setShowManualSelector(true);
+  };
+
+  const assignPlayerToSlot = (player: any) => {
+    if (activeSlotIndex === null) return;
+    setManualAssignments((prev) => ({
+      ...prev,
+      [activeSlotIndex]: player,
+    }));
+    setActiveSlotIndex(null);
+  };
+
+  const deployManual = () => {
+    if (!pendingFormation) return;
+
+    const positions = FORMATIONS[pendingFormation];
+    const preservedTokens = tokens.filter((t) => t.type !== "team-a");
+    const teamATokens: Token[] = [];
+
+    positions.forEach((pos, index) => {
+      const assignedPlayer = manualAssignments[index];
+      if (assignedPlayer) {
+        teamATokens.push({
+          id: `a-${assignedPlayer.id}-${Date.now()}`,
+          type: "team-a",
+          label: `${index + 1}`,
+          playerName: assignedPlayer.lastName || assignedPlayer.firstName,
+          x: pos.x,
+          y: pos.y,
+        });
+      }
+    });
+
+    if (teamATokens.length === 0) {
+      return showAlert("Asigna al menos un jugador", "warning");
+    }
+
+    setTokens([...preservedTokens, ...teamATokens]);
+    setShowManualSelector(false);
+    setPendingFormation(null);
+    showAlert("Alineación manual completada", "success");
+  };
 
   // --- LOGICA CANVAS (Renderizado) ---
   useEffect(() => {
@@ -511,52 +705,45 @@ export default function TacticalBoardPage() {
     if (!selectedCategoryId)
       return showAlert("Selecciona una categoría", "error");
 
-    const initialState = { tokens, strokes };
-    const animation = recordedFrames.length > 0 ? recordedFrames : null;
+    // Limpiamos estrictamente los objetos para evitar errores '__typename' de GraphQL
+    const cleanTokens = cleanObject(tokens);
+    const cleanStrokes = cleanObject(strokes);
+    const cleanAnimation =
+      recordedFrames.length > 0 ? cleanObject(recordedFrames) : null;
+
+    const initialState = { tokens: cleanTokens, strokes: cleanStrokes };
     const inputData = {
       title,
       categoryId: selectedCategoryId,
       initialState,
-      animation,
+      animation: cleanAnimation,
       coachId: catData?.meCoach?.id,
     };
 
     try {
       if (activeBoardId) {
-        // ACTUALIZAR
         await updateBoard({
-          variables: {
-            input: {
-              id: activeBoardId,
-              ...inputData,
-            },
-          },
+          variables: { input: { id: activeBoardId, ...inputData } },
         });
-        showAlert("Estrategia actualizada", "success");
+        showAlert("Estrategia actualizada correctamente", "success");
       } else {
-        // CREAR
         const { data }: any = await createBoard({
-          variables: {
-            input: inputData,
-          },
+          variables: { input: inputData },
         });
         setActiveBoardId(data.createTacticalBoard.id);
-        showAlert("Nueva estrategia guardada", "success");
+        showAlert("Nueva estrategia guardada correctamente", "success");
       }
     } catch (error: any) {
       console.error(error);
-      showAlert(error.message || "Error al guardar", "error");
+      showAlert(error.message || "Error al guardar la estrategia", "error");
     }
   };
 
-  // --- ELIMINAR ---
   const handleDeleteBoard = async (id: string) => {
     if (!confirm("¿Estás seguro de eliminar esta táctica?")) return;
     try {
       await deleteBoard({ variables: { id } });
-      // Si borramos la que estamos viendo, resetear
       if (id === activeBoardId) initBoard();
-      // Refrescar lista
       if (libraryCategoryFilter) {
         refetchBoards({ categoryId: libraryCategoryFilter });
       }
@@ -569,24 +756,28 @@ export default function TacticalBoardPage() {
   const loadingAction = creating || updating;
 
   return (
-    <div className="flex flex-col items-center w-full min-h-screen bg-slate-900 text-white font-sans p-2 md:p-6 relative overflow-hidden">
-      {/* --- HEADER SUPERIOR (Datos + Biblioteca) --- */}
-      <div className="w-full max-w-5xl flex flex-col md:flex-row items-center gap-4 mb-6 bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-xl relative z-20">
+    <div
+      className={`flex flex-col items-center w-full min-h-screen font-sans p-2 md:p-6 relative overflow-hidden`}
+      style={{ backgroundColor: COLORS.light, color: COLORS.textMain }}
+    >
+      {/* --- HEADER SUPERIOR --- */}
+      <div className="w-full max-w-5xl flex flex-col md:flex-row items-center gap-4 mb-6 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative z-20">
         <div className="flex items-center gap-2 w-full md:w-auto">
           <button
             onClick={() => router.back()}
-            className="p-2 bg-slate-700 hover:bg-slate-600 rounded-full transition-colors"
+            className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors text-gray-600"
           >
             <ArrowLeft size={20} />
           </button>
           <button
             onClick={() => setIsLibraryOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors text-white shadow-md hover:shadow-lg hover:opacity-90"
+            style={{ backgroundColor: COLORS.indigo }}
           >
             <FolderOpen size={18} /> Biblioteca
           </button>
           {activeBoardId && (
-            <span className="text-xs font-mono bg-indigo-900/50 text-indigo-300 px-2 py-1 rounded border border-indigo-700">
+            <span className="text-xs font-mono bg-indigo-100 text-indigo-700 px-2 py-1 rounded border border-indigo-200">
               EDITANDO
             </span>
           )}
@@ -594,26 +785,23 @@ export default function TacticalBoardPage() {
 
         <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="relative">
-            <Type className="absolute left-3 top-3 text-slate-400" size={18} />
+            <Type className="absolute left-3 top-3 text-gray-400" size={18} />
             <input
               type="text"
               placeholder="Título de la Estrategia"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-600 text-white pl-10 pr-4 py-2.5 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm placeholder-slate-500"
+              className="w-full bg-gray-50 border border-gray-300 text-gray-800 pl-10 pr-4 py-2.5 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm placeholder-gray-400 transition-all"
             />
           </div>
           <div className="relative">
-            <Layout
-              className="absolute left-3 top-3 text-slate-400"
-              size={18}
-            />
+            <Layout className="absolute left-3 top-3 text-gray-400" size={18} />
             <select
               value={selectedCategoryId}
               onChange={(e) => setSelectedCategoryId(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-600 text-white pl-10 pr-4 py-2.5 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm appearance-none"
+              className="w-full bg-gray-50 border border-gray-300 text-gray-800 pl-10 pr-4 py-2.5 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm appearance-none cursor-pointer transition-all"
             >
-              <option value="">Categoría...</option>
+              <option value="">Selecciona Categoría...</option>
               {categories.map((c: any) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -626,7 +814,8 @@ export default function TacticalBoardPage() {
         <button
           onClick={handleSaveToBackend}
           disabled={loadingAction}
-          className="w-full md:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+          className="w-full md:w-auto px-6 py-2.5 text-white font-bold rounded-lg shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+          style={{ backgroundColor: COLORS.green }}
         >
           {loadingAction ? (
             <Loader2 className="animate-spin" size={20} />
@@ -637,29 +826,205 @@ export default function TacticalBoardPage() {
         </button>
       </div>
 
-      {/* --- MODAL DE BIBLIOTECA --- */}
-      {isLibraryOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-slate-800 w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl border border-slate-600 flex flex-col overflow-hidden">
-            {/* Header Modal */}
-            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
-              <div className="flex items-center gap-3">
-                <FolderOpen className="text-indigo-400" />
-                <h2 className="text-xl font-bold">Biblioteca de Estrategias</h2>
+      {/* --- MODAL: ELECCIÓN DE MÉTODO DE DESPLIEGUE --- */}
+      {showDeploymentChoice && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full text-center">
+            <h3 className="text-xl font-bold mb-2 text-gray-800">
+              Definir Alineación
+            </h3>
+            <p className="text-gray-500 text-sm mb-6">
+              ¿Cómo deseas posicionar a los jugadores en el {pendingFormation}?
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={deployAutomatic}
+                className="flex flex-col items-center justify-center gap-2 p-4 border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all group"
+              >
+                <RefreshCw
+                  size={32}
+                  className="text-indigo-400 group-hover:text-indigo-600"
+                />
+                <span className="font-bold text-gray-700">Automático</span>
+                <span className="text-[10px] text-gray-400">
+                  Ordenado por posición (ARQ, DEF...)
+                </span>
+              </button>
+
+              <button
+                onClick={openManualSelector}
+                className="flex flex-col items-center justify-center gap-2 p-4 border border-gray-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group"
+              >
+                <UserPlus
+                  size={32}
+                  className="text-emerald-400 group-hover:text-emerald-600"
+                />
+                <span className="font-bold text-gray-700">
+                  Selección Manual
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  Elige jugador por jugador
+                </span>
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setShowDeploymentChoice(false);
+                setPendingFormation(null);
+              }}
+              className="mt-6 text-gray-400 text-sm underline hover:text-gray-600"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: SELECCIÓN MANUAL DE JUGADORES --- */}
+      {showManualSelector && pendingFormation && (
+        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">
+                  Alineación Manual:{" "}
+                  <span className="text-indigo-600">{pendingFormation}</span>
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Toca un círculo en la cancha y selecciona un jugador de la
+                  lista.
+                </p>
               </div>
               <button
-                onClick={() => setIsLibraryOpen(false)}
-                className="p-2 hover:bg-slate-700 rounded-full"
+                onClick={() => setShowManualSelector(false)}
+                className="p-2 hover:bg-gray-200 rounded-full text-gray-500"
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Filtro y Contenido */}
+            <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+              <div className="flex-1 bg-[#2c8f43] relative p-4 flex items-center justify-center overflow-hidden">
+                <div
+                  className="absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,255,255,0.2) 50px, rgba(255,255,255,0.2) 52px)",
+                  }}
+                ></div>
+                <div className="relative w-full max-w-[400px] aspect-[2/3] border-4 border-white/80 rounded bg-green-700/50 shadow-2xl">
+                  {FORMATIONS[pendingFormation].map((pos, index) => {
+                    const assigned = manualAssignments[index];
+                    const isActive = activeSlotIndex === index;
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => setActiveSlotIndex(index)}
+                        className={`absolute w-12 h-12 -ml-6 -mt-6 rounded-full border-2 flex items-center justify-center shadow-lg transition-transform hover:scale-110
+                                            ${isActive ? "ring-4 ring-yellow-400 z-10" : ""}
+                                            ${assigned ? "bg-white border-indigo-600" : "bg-black/40 border-white text-white"}
+                                        `}
+                        style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                      >
+                        {assigned ? (
+                          <div className="flex flex-col items-center leading-none">
+                            <span className="font-bold text-indigo-900 text-[10px]">
+                              {index + 1}
+                            </span>
+                            <span className="text-[8px] font-bold text-indigo-700 truncate max-w-[40px]">
+                              {assigned.lastName || assigned.firstName}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-bold">{index + 1}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="w-full md:w-1/3 bg-white border-l border-gray-200 flex flex-col">
+                <div className="p-3 bg-gray-100 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  {activeSlotIndex !== null
+                    ? `Seleccionar para Posición ${activeSlotIndex + 1}`
+                    : "Selecciona una posición primero"}
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                  {activeSlotIndex !== null ? (
+                    playersData?.playersByCategory
+                      .filter(
+                        (p: any) =>
+                          !Object.values(manualAssignments).some(
+                            (assigned: any) => assigned.id === p.id,
+                          ),
+                      )
+                      .map((p: any) => (
+                        <button
+                          key={p.id}
+                          onClick={() => assignPlayerToSlot(p)}
+                          className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left group"
+                        >
+                          <div>
+                            <p className="font-bold text-gray-800 text-sm group-hover:text-indigo-700">
+                              {p.firstName} {p.lastName}
+                            </p>
+                            <span className="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">
+                              {p.position || "N/A"}
+                            </span>
+                          </div>
+                          <CheckCircle2
+                            size={16}
+                            className="text-gray-300 group-hover:text-indigo-500"
+                          />
+                        </button>
+                      ))
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-gray-400 p-6 text-center">
+                      <Hand size={32} className="mb-2 opacity-50" />
+                      <p className="text-sm">
+                        Toca un círculo en la pizarra para asignar un jugador.
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 border-t border-gray-200 bg-gray-50">
+                  <button
+                    onClick={deployManual}
+                    className="w-full py-3 rounded-xl text-white font-bold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                    style={{ backgroundColor: COLORS.indigo }}
+                  >
+                    <ShieldCheck size={20} /> Confirmar Alineación
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DE BIBLIOTECA --- */}
+      {isLibraryOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <div className="flex items-center gap-3">
+                <FolderOpen className="text-indigo-600" />
+                <h2 className="text-xl font-bold text-gray-800">
+                  Biblioteca de Estrategias
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsLibraryOpen(false)}
+                className="p-2 hover:bg-gray-200 rounded-full text-gray-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
             <div className="flex flex-1 overflow-hidden">
-              {/* Sidebar Categorías */}
-              <div className="w-1/3 border-r border-slate-700 p-4 bg-slate-900/30 overflow-y-auto">
-                <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">
+              <div className="w-1/3 border-r border-gray-200 p-4 bg-gray-50 overflow-y-auto">
+                <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">
                   Categorías
                 </h3>
                 <div className="space-y-1">
@@ -667,18 +1032,26 @@ export default function TacticalBoardPage() {
                     <button
                       key={c.id}
                       onClick={() => setLibraryCategoryFilter(c.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${libraryCategoryFilter === c.id ? "bg-indigo-600 text-white" : "text-slate-400 hover:bg-slate-700 hover:text-white"}`}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        libraryCategoryFilter === c.id
+                          ? "text-white shadow-md"
+                          : "text-gray-600 hover:bg-gray-200"
+                      }`}
+                      style={{
+                        backgroundColor:
+                          libraryCategoryFilter === c.id
+                            ? COLORS.indigo
+                            : "transparent",
+                      }}
                     >
                       {c.name}
                     </button>
                   ))}
                 </div>
               </div>
-
-              {/* Lista de Pizarras */}
-              <div className="flex-1 p-6 overflow-y-auto bg-slate-800">
+              <div className="flex-1 p-6 overflow-y-auto bg-gray-100">
                 {!libraryCategoryFilter ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-50">
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
                     <Search size={48} className="mb-2" />
                     <p>Selecciona una categoría</p>
                   </div>
@@ -690,7 +1063,7 @@ export default function TacticalBoardPage() {
                     />
                   </div>
                 ) : boardsData?.tacticalBoardsByCategory?.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500">
                     <p>No hay estrategias guardadas en esta categoría.</p>
                   </div>
                 ) : (
@@ -698,33 +1071,33 @@ export default function TacticalBoardPage() {
                     {boardsData?.tacticalBoardsByCategory.map((board: any) => (
                       <div
                         key={board.id}
-                        className="bg-slate-700 p-4 rounded-xl border border-slate-600 hover:border-indigo-500 transition-all group"
+                        className="bg-white p-4 rounded-xl border border-gray-200 hover:border-indigo-400 transition-all group shadow-sm hover:shadow-md"
                       >
                         <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-bold text-lg text-white group-hover:text-indigo-300 truncate">
+                          <h4 className="font-bold text-lg text-gray-800 group-hover:text-indigo-600 truncate">
                             {board.title}
                           </h4>
                           {board.animation && (
-                            <span className="bg-red-900/50 text-red-300 text-[10px] px-1.5 py-0.5 rounded border border-red-800 flex items-center gap-1">
+                            <span className="bg-red-50 text-red-500 text-[10px] px-1.5 py-0.5 rounded border border-red-200 flex items-center gap-1 font-bold">
                               <Play size={8} fill="currentColor" /> Animada
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-400 mb-4">
+                        <p className="text-xs text-gray-400 mb-4">
                           Actualizado:{" "}
                           {new Date(board.updatedAt).toLocaleDateString()}
                         </p>
-
                         <div className="flex gap-2">
                           <button
                             onClick={() => loadBoard(board)}
-                            className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                            className="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 text-white hover:opacity-90 transition-opacity"
+                            style={{ backgroundColor: COLORS.indigo }}
                           >
-                            <Edit3 size={14} /> Cargar / Editar
+                            <Edit3 size={14} /> Cargar
                           </button>
                           <button
                             onClick={() => handleDeleteBoard(board.id)}
-                            className="p-2 bg-slate-800 hover:bg-red-900/50 text-slate-400 hover:text-red-400 rounded-lg border border-slate-600 hover:border-red-800 transition-colors"
+                            className="p-2 bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg border border-gray-200 transition-colors"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -739,18 +1112,23 @@ export default function TacticalBoardPage() {
         </div>
       )}
 
-      {/* --- TOOLBAR DE HERRAMIENTAS --- */}
-      <div className="flex flex-col gap-3 mb-4 bg-slate-800 p-3 rounded-xl shadow-2xl border border-slate-700 z-40 max-w-5xl w-full">
+      {/* --- TOOLBAR DE HERRAMIENTAS CENTRAL --- */}
+      <div className="flex flex-col gap-3 mb-4 bg-white p-4 rounded-xl shadow-md border border-gray-200 z-40 max-w-5xl w-full">
+        {/* GRUPO 1: CONTROLES PRINCIPALES */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
+          {/* Herramientas de Interacción */}
+          <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
             <button
               onClick={() => setMode("move")}
               disabled={isPlaying}
               className={`flex items-center gap-2 px-3 py-2 rounded-md font-bold transition-all ${
                 mode === "move"
-                  ? "bg-emerald-500 text-white shadow-lg"
-                  : "text-slate-400 hover:text-white"
+                  ? "text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-800"
               } ${isPlaying ? "opacity-50 cursor-not-allowed" : ""}`}
+              style={{
+                backgroundColor: mode === "move" ? COLORS.green : "transparent",
+              }}
             >
               <Hand size={18} /> <span className="hidden sm:inline">Mover</span>
             </button>
@@ -759,9 +1137,12 @@ export default function TacticalBoardPage() {
               disabled={isPlaying}
               className={`flex items-center gap-2 px-3 py-2 rounded-md font-bold transition-all ${
                 mode === "draw"
-                  ? "bg-emerald-500 text-white shadow-lg"
-                  : "text-slate-400 hover:text-white"
+                  ? "text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-800"
               } ${isPlaying ? "opacity-50 cursor-not-allowed" : ""}`}
+              style={{
+                backgroundColor: mode === "draw" ? COLORS.green : "transparent",
+              }}
             >
               <PenTool size={18} />{" "}
               <span className="hidden sm:inline">Dibujar</span>
@@ -773,18 +1154,19 @@ export default function TacticalBoardPage() {
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="w-8 h-8 rounded-full cursor-pointer border-2 border-slate-600 bg-transparent p-0 overflow-hidden"
+              className="w-8 h-8 rounded-full cursor-pointer border-2 border-gray-200 bg-transparent p-0 overflow-hidden shadow-sm"
             />
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-lg border border-slate-700">
+          {/* Grabación y Reproducción */}
+          <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-lg border border-gray-200">
             <button
               onClick={toggleRecording}
               disabled={isPlaying}
               className={`flex items-center gap-2 px-3 py-1.5 rounded transition-all ${
                 isRecording
-                  ? "bg-red-600 text-white animate-pulse"
-                  : "bg-slate-800 text-red-500 hover:bg-slate-700"
+                  ? "bg-red-500 text-white animate-pulse"
+                  : "bg-white text-red-500 hover:bg-red-50"
               } ${isPlaying ? "opacity-30 cursor-not-allowed" : ""}`}
             >
               {isRecording ? (
@@ -802,10 +1184,10 @@ export default function TacticalBoardPage() {
               disabled={isRecording || recordedFrames.length === 0}
               className={`flex items-center gap-2 px-3 py-1.5 rounded transition-all ${
                 isPlaying
-                  ? "bg-blue-600 text-white"
+                  ? "bg-indigo-600 text-white"
                   : recordedFrames.length > 0
-                    ? "bg-slate-800 text-blue-400 hover:bg-slate-700 hover:text-blue-300"
-                    : "bg-slate-800 text-slate-600 cursor-not-allowed"
+                    ? "bg-white text-indigo-600 hover:bg-indigo-50"
+                    : "bg-white text-gray-400 cursor-not-allowed"
               }`}
             >
               {isPlaying ? (
@@ -819,70 +1201,101 @@ export default function TacticalBoardPage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                setStrokes([]);
-                setCurrentStroke(null);
-                setRecordedFrames([]);
-                setPlaybackIndex(0);
-                drawCanvas();
-              }}
-              className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg"
-              title="Borrar Todo"
-            >
-              <Eraser size={18} />
-            </button>
-            <button
-              onClick={initBoard}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"
-              title="Nueva Pizarra (Reset)"
-            >
-              <RefreshCw size={18} />
-            </button>
+          {/* Limpiar y Despliegue de Plantel */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  setStrokes([]);
+                  setCurrentStroke(null);
+                  setRecordedFrames([]);
+                  setPlaybackIndex(0);
+                  drawCanvas();
+                }}
+                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Borrar Todo"
+              >
+                <Eraser size={18} />
+              </button>
+              <button
+                onClick={initBoard}
+                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                title="Reset Completo"
+              >
+                <RefreshCw size={18} />
+              </button>
+            </div>
+
+            <div className="hidden md:block w-px h-8 bg-gray-200"></div>
+
+            <div className="flex items-center gap-2 bg-indigo-50 p-1.5 rounded-lg border border-indigo-100">
+              <ShieldCheck size={16} className="text-indigo-600 ml-1" />
+              <span className="text-xs text-indigo-800 font-bold whitespace-nowrap">
+                PLANTEL:
+              </span>
+              <select
+                className="bg-white text-gray-800 border border-gray-300 text-xs rounded px-2 py-1 outline-none shadow-sm cursor-pointer hover:border-indigo-400"
+                disabled={!selectedCategoryId || loadingPlayers}
+                onChange={handleFormationSelect}
+              >
+                <option value="">Alinear en Cancha...</option>
+                {Object.keys(FORMATIONS).map((form) => (
+                  <option key={form} value={form}>
+                    {form}
+                  </option>
+                ))}
+              </select>
+              {loadingPlayers && (
+                <Loader2 size={14} className="animate-spin text-indigo-400" />
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-slate-700">
-          <span className="text-xs text-slate-500 font-bold uppercase mr-2">
+        {/* GRUPO 2: AGREGAR ELEMENTOS (Estilo Explicito Base) */}
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-3 border-t border-gray-100 mt-1">
+          <span className="text-xs text-gray-400 font-bold uppercase mr-2">
             Agregar:
           </span>
           <button
             onClick={() => handleAddToken("team-a")}
-            className="flex items-center gap-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 px-3 py-1 rounded text-xs transition-colors group"
+            className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 transition-all shadow-sm group"
           >
-            <div className="w-3 h-3 rounded-full bg-red-600 border border-white group-hover:scale-110"></div>{" "}
+            <div className="w-3.5 h-3.5 rounded-full bg-red-600 border border-white shadow-sm group-hover:scale-110 transition-transform"></div>{" "}
             <span>Rojo</span>
           </button>
           <button
             onClick={() => handleAddToken("team-b")}
-            className="flex items-center gap-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 px-3 py-1 rounded text-xs transition-colors group"
+            className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 transition-all shadow-sm group"
           >
-            <div className="w-3 h-3 rounded-full bg-blue-600 border border-white group-hover:scale-110"></div>{" "}
+            <div className="w-3.5 h-3.5 rounded-full bg-blue-600 border border-white shadow-sm group-hover:scale-110 transition-transform"></div>{" "}
             <span>Azul</span>
           </button>
           <button
             onClick={() => handleAddToken("ball")}
-            className="flex items-center gap-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 px-3 py-1 rounded text-xs transition-colors group"
+            className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 transition-all shadow-sm group"
           >
-            <div className="w-3 h-3 rounded-full bg-white border border-black group-hover:scale-110"></div>{" "}
+            <div className="w-3.5 h-3.5 rounded-full bg-white border border-gray-300 shadow-sm group-hover:scale-110 transition-transform"></div>{" "}
             <span>Pelota</span>
           </button>
           <button
             onClick={() => handleAddToken("cone")}
-            className="flex items-center gap-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 px-3 py-1 rounded text-xs transition-colors group"
+            className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 transition-all shadow-sm group"
           >
             <Triangle
-              size={12}
-              className="text-orange-500 fill-orange-500 group-hover:-translate-y-0.5"
+              size={14}
+              className="text-orange-500 fill-orange-500 group-hover:-translate-y-0.5 transition-transform"
             />{" "}
             <span>Cono</span>
           </button>
           <button
             onClick={() => handleAddToken("goal")}
-            className="flex items-center gap-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 px-3 py-1 rounded text-xs transition-colors group"
+            className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 transition-all shadow-sm group"
           >
-            <Square size={12} className="text-white group-hover:scale-110" />{" "}
+            <Square
+              size={14}
+              className="text-gray-800 group-hover:scale-110 transition-transform"
+            />{" "}
             <span>Arco</span>
           </button>
         </div>
@@ -891,7 +1304,7 @@ export default function TacticalBoardPage() {
       {/* --- Slider de Progreso --- */}
       {recordedFrames.length > 0 && (
         <div className="w-full max-w-[900px] mb-2 px-1 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
-          <span className="text-xs text-slate-500 font-mono">0s</span>
+          <span className="text-xs text-gray-500 font-mono">0s</span>
           <input
             type="range"
             min="0"
@@ -899,27 +1312,26 @@ export default function TacticalBoardPage() {
             value={playbackIndex}
             onChange={handleScrub}
             disabled={isRecording}
-            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400"
+            className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500"
           />
-          <span className="text-xs text-slate-500 font-mono">
+          <span className="text-xs text-gray-500 font-mono">
             {(recordedFrames.length * (FRAME_RATE_MS / 1000)).toFixed(1)}s
           </span>
         </div>
       )}
 
       {/* --- Cancha Container --- */}
-
       <div
         ref={containerRef}
         className={`
             relative w-full max-w-[900px] aspect-[16/10] sm:aspect-[4/3] 
-            bg-[#2c8f43] border-[6px] border-white rounded shadow-2xl overflow-hidden select-none 
+            bg-[#2c8f43] border-[6px] border-white rounded-lg shadow-2xl overflow-hidden select-none 
             ${mode === "draw" && !isPlaying ? "cursor-crosshair" : "cursor-default"}
             touch-none z-10
         `}
         style={{
           backgroundImage:
-            "repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(0,0,0,0.06) 50px, rgba(0,0,0,0.06) 100px)",
+            "repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,255,255,0.15) 50px, rgba(255,255,255,0.15) 52px)",
         }}
         onMouseDown={(e) => handleStart(e)}
         onTouchStart={(e) => handleStart(e)}
@@ -942,6 +1354,7 @@ export default function TacticalBoardPage() {
           </div>
         )}
 
+        {/* Líneas de la cancha */}
         <div className="absolute inset-0 pointer-events-none opacity-80">
           <div className="absolute top-1/2 left-1/2 w-[15%] h-[20%] min-w-[80px] min-h-[80px] border-2 border-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
           <div className="absolute top-1/2 w-full h-0.5 bg-white/70"></div>
@@ -954,21 +1367,16 @@ export default function TacticalBoardPage() {
           className="absolute top-0 left-0 w-full h-full z-10 pointer-events-none"
         />
 
+        {/* Tokens (Jugadores) con renderizado de Nombre */}
         {tokens.map((token) => (
           <div
             key={token.id}
             onMouseDown={(e) => handleStart(e, token.id)}
             onTouchStart={(e) => handleStart(e, token.id)}
             className={`
-                absolute flex items-center justify-center 
-                shadow-md z-20 
-                ${!isPlaying && mode === "move" ? "hover:scale-110 active:scale-110 cursor-grab active:cursor-grabbing" : ""}
+                absolute flex flex-col items-center justify-center z-20 pointer-events-auto
+                ${!isPlaying && mode === "move" ? "cursor-grab active:cursor-grabbing" : ""}
                 ${isPlaying ? `transition-all ease-linear will-change-[left,top]` : ""}
-                ${token.type === "team-a" ? "bg-red-600 text-white border-2 border-white shadow-red-900/50 w-7 h-7 sm:w-9 sm:h-9 rounded-full font-bold text-xs sm:text-sm" : ""}
-                ${token.type === "team-b" ? "bg-blue-600 text-white border-2 border-white shadow-blue-900/50 w-7 h-7 sm:w-9 sm:h-9 rounded-full font-bold text-xs sm:text-sm" : ""}
-                ${token.type === "ball" ? "bg-white text-black border-2 border-black w-4 h-4 sm:w-5 sm:h-5 rounded-full z-30" : ""}
-                ${token.type === "cone" ? "bg-orange-500 w-5 h-5 sm:w-6 sm:h-6 border border-white/50" : ""}
-                ${token.type === "goal" ? "bg-transparent border-4 border-white/80 w-24 h-12 rounded-sm" : ""}
             `}
             style={{
               left: `${token.x}%`,
@@ -977,24 +1385,45 @@ export default function TacticalBoardPage() {
               transitionDuration: isPlaying
                 ? `${TRANSITION_DURATION_MS}ms`
                 : "0s",
-              clipPath:
-                token.type === "cone"
-                  ? "polygon(50% 0%, 0% 100%, 100% 100%)"
-                  : "none",
             }}
           >
-            {(token.type === "team-a" || token.type === "team-b") &&
-              token.label}
+            <div
+              className={`
+              flex items-center justify-center shadow-md
+              ${!isPlaying && mode === "move" ? "hover:scale-110 active:scale-110 transition-transform" : ""}
+              ${token.type === "team-a" ? "bg-red-600 text-white border-2 border-white w-7 h-7 sm:w-9 sm:h-9 rounded-full font-bold text-xs sm:text-sm" : ""}
+              ${token.type === "team-b" ? "bg-blue-600 text-white border-2 border-white w-7 h-7 sm:w-9 sm:h-9 rounded-full font-bold text-xs sm:text-sm" : ""}
+              ${token.type === "ball" ? "bg-white text-black border-2 border-black w-4 h-4 sm:w-5 sm:h-5 rounded-full z-30" : ""}
+              ${token.type === "cone" ? "bg-orange-500 w-5 h-5 sm:w-6 sm:h-6 border border-white/50" : ""}
+              ${token.type === "goal" ? "bg-transparent border-4 border-white/80 w-24 h-12 rounded-sm" : ""}
+            `}
+              style={{
+                clipPath:
+                  token.type === "cone"
+                    ? "polygon(50% 0%, 0% 100%, 100% 100%)"
+                    : "none",
+              }}
+            >
+              {(token.type === "team-a" || token.type === "team-b") &&
+                token.label}
+            </div>
+
+            {/* Etiqueta con el nombre real del jugador si se usó alineación */}
+            {token.playerName && (
+              <span className="mt-1 bg-white/90 text-gray-900 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded pointer-events-none whitespace-nowrap shadow-sm border border-gray-200">
+                {token.playerName}
+              </span>
+            )}
           </div>
         ))}
       </div>
 
-      <p className="mt-4 text-slate-400 text-sm flex gap-2 items-center">
+      <p className="mt-4 text-gray-400 text-sm flex gap-2 items-center font-medium">
         {isRecording
           ? "🔴 Grabando..."
           : isPlaying
             ? "▶️ Reproduciendo..."
-            : "Abre la Biblioteca para cargar una táctica guardada."}
+            : "Selecciona una categoría y usa 'Alinear' para gestionar tu equipo o añade elementos libremente."}
       </p>
     </div>
   );

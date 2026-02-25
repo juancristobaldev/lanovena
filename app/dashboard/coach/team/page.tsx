@@ -15,6 +15,7 @@ import {
 import { useUser } from "@/src/providers/me";
 import { gql } from "@apollo/client";
 import { useQuery } from "@apollo/client/react";
+import Link from "next/link";
 
 export const GET_COACH_TEAM = gql`
   query GetCoachTeam {
@@ -210,47 +211,49 @@ function PlayerCard({ player }: { player: any }) {
   const birthYear = new Date(player.birthDate).getFullYear();
 
   return (
-    <div className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300 group cursor-pointer relative overflow-hidden flex flex-col items-center text-center">
-      {/* Badge de Becado - Marketing Directo */}
-      {player.scholarship && (
-        <div
-          className="absolute top-0 right-0 bg-[#10B981] text-white px-3 py-1 rounded-bl-2xl shadow-sm z-10"
-          title="Jugador Becado"
-        >
-          <Award size={14} className="fill-white" />
-        </div>
-      )}
-
-      {/* Avatar */}
-      <div className="w-20 h-20 rounded-2xl bg-indigo-50 border-4 border-white shadow-md overflow-hidden mb-4 shrink-0 group-hover:scale-105 transition-transform">
-        {player.photoUrl ? (
-          <img
-            src={player.photoUrl}
-            alt=""
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-[#312E81] font-black text-2xl">
-            {player.firstName.charAt(0)}
+    <Link href={`/dashboard/coach/team/${player?.id}`}>
+      <div className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300 group cursor-pointer relative overflow-hidden flex flex-col items-center text-center">
+        {/* Badge de Becado - Marketing Directo */}
+        {player.scholarship && (
+          <div
+            className="absolute top-0 right-0 bg-[#10B981] text-white px-3 py-1 rounded-bl-2xl shadow-sm z-10"
+            title="Jugador Becado"
+          >
+            <Award size={14} className="fill-white" />
           </div>
         )}
-      </div>
 
-      <div className="w-full">
-        <h3 className="font-bold text-gray-900 group-hover:text-[#312E81] transition-colors leading-tight">
-          {player.firstName} {player.lastName}
-        </h3>
-        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-          AÑO {birthYear}
-        </p>
-      </div>
+        {/* Avatar */}
+        <div className="w-20 h-20 rounded-2xl bg-indigo-50 border-4 border-white shadow-md overflow-hidden mb-4 shrink-0 group-hover:scale-105 transition-transform">
+          {player.photoUrl ? (
+            <img
+              src={player.photoUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[#312E81] font-black text-2xl">
+              {player.firstName.charAt(0)}
+            </div>
+          )}
+        </div>
 
-      <div className="mt-4 pt-4 border-t border-gray-50 w-full flex justify-center">
-        <div className="flex items-center gap-1.5 text-xs font-black text-indigo-600/40 group-hover:text-indigo-600 transition-colors">
-          VER FICHA <ChevronRight size={14} strokeWidth={3} />
+        <div className="w-full">
+          <h3 className="font-bold text-gray-900 group-hover:text-[#312E81] transition-colors leading-tight">
+            {player.firstName} {player.lastName}
+          </h3>
+          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
+            AÑO {birthYear}
+          </p>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-gray-50 w-full flex justify-center">
+          <div className="flex items-center gap-1.5 text-xs font-black text-indigo-600/40 group-hover:text-indigo-600 transition-colors">
+            VER FICHA <ChevronRight size={14} strokeWidth={3} />
+          </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
