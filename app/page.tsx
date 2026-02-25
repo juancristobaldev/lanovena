@@ -191,60 +191,6 @@ export default function LandingPage() {
       </section>
 
       {/* METHODOLOGY & IA */}
-      <section
-        id="methodology"
-        className="py-24 bg-[#0F172A] text-white relative overflow-hidden"
-      >
-        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center gap-16">
-          <div className="md:w-1/2">
-            <span className="text-[#10B981] font-bold uppercase tracking-widest text-xs mb-2 block">
-              Identidad & Tecnología
-            </span>
-            <h2 className="text-4xl font-extrabold mb-6">
-              Metodología Global + <br /> IA de La Araucanía
-            </h2>
-            <p className="text-gray-400 text-lg mb-8 leading-relaxed">
-              No solo es gestión, es conocimiento. Accede a nuestra biblioteca
-              de ejercicios basada en estándares FIFA y deja que nuestra IA
-              analice la asistencia para prevenir la deserción.
-            </p>
-            <ul className="space-y-4">
-              <li className="flex items-center gap-3">
-                <CheckCircle2 className="text-[#10B981]" size={20} />
-                <span>Modelos Comercial e Institucional (Municipios)</span>
-              </li>
-              <li className="flex items-center gap-3">
-                <CheckCircle2 className="text-[#10B981]" size={20} />
-                <span>Biblioteca de 500+ ejercicios formativos</span>
-              </li>
-              <li className="flex items-center gap-3">
-                <CheckCircle2 className="text-[#10B981]" size={20} />
-                <span>Análisis preventivo de morosidad con IA</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* Simulated Chat */}
-          <div className="md:w-1/2 w-full bg-slate-800/50 border border-slate-700 rounded-2xl p-6 backdrop-blur-sm">
-            <div className="flex items-center gap-3 mb-6 border-b border-slate-700 pb-4">
-              <div className="w-8 h-8 bg-[#312E81] rounded-full flex items-center justify-center">
-                <Sparkles size={16} className="text-yellow-400" />
-              </div>
-              <p className="font-bold text-sm">Asistente La Novena</p>
-            </div>
-            <div className="space-y-4 text-sm">
-              <div className="bg-slate-700/50 p-3 rounded-lg rounded-tl-none mr-12 text-slate-300">
-                ¿Qué categoría tiene mayor riesgo de deserción este mes?
-              </div>
-              <div className="bg-[#312E81] p-3 rounded-lg rounded-tr-none ml-12 text-white">
-                Analizando asistencia... 📊 La categoría **Sub-12** muestra una
-                baja del 15%. Te recomiendo revisar los comunicados enviados a
-                sus apoderados.
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* FOOTER SIMPLE */}
       <footer className="bg-white border-t border-gray-100 py-12">
