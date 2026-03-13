@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter, useSearchParams } from "next/navigation";
 import { gql } from "@apollo/client";
@@ -35,7 +35,7 @@ const UPDATE_EXERCISE = gql`
   }
 `;
 
-export default function ExerciseEditorPage() {
+const ExerciseEditorPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const exerciseId = searchParams.get("id"); // Detecta si es modo Edición
@@ -256,5 +256,13 @@ export default function ExerciseEditorPage() {
         </div>
       </form>
     </div>
+  );
+};
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <ExerciseEditorPage />
+    </Suspense>
   );
 }

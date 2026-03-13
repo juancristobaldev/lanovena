@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { gql } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
@@ -31,7 +31,7 @@ const UPDATE_NOTICE = gql`
   }
 `;
 
-export default function NoticeEditorPage() {
+const NoticeEditorPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const noticeId = searchParams.get("id"); // Si hay ID, es modo edición
@@ -214,5 +214,13 @@ export default function NoticeEditorPage() {
         </div>
       </form>
     </div>
+  );
+};
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <NoticeEditorPage />
+    </Suspense>
   );
 }
