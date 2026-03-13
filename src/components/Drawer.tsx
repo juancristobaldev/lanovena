@@ -1,4 +1,3 @@
-// src/components/layout/Sidebar.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -9,7 +8,6 @@ import {
   X,
   LogOut,
   User,
-  ChevronRight,
   ShieldCheck,
   LayoutDashboard,
 } from "lucide-react";
@@ -18,99 +16,116 @@ import { useUser } from "../providers/me";
 import Cookies from "js-cookie";
 
 export default function Sidebar() {
-  const { user, loading: isLoading } = useUser(); // Asumo que useUser podría devolver isLoading
+  const { user, loading: isLoading } = useUser();
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
 
-  // Obtener menú o array vacío para evitar errores
   const menu = user?.role ? MENU_ITEMS[user.role as UserRole] || [] : [];
 
   const toggleDrawer = () => setIsOpen(!isOpen);
 
-  // Bloquear scroll del body cuando el menú móvil está abierto
+  // Bloquear scroll y escuchar tecla ESC
   useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+
     if (isOpen) {
       document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", handleEsc);
     } else {
       document.body.style.overflow = "unset";
     }
+
     return () => {
       document.body.style.overflow = "unset";
+      window.removeEventListener("keydown", handleEsc);
     };
   }, [isOpen]);
 
-  // Manejo de Logout (Mockup - conectar con tu lógica real)
   const handleLogout = () => {
+    // TODO: Reemplazar este confirm nativo por un Modal/Dialog de UI moderno.
     if (confirm("¿Estás seguro que deseas cerrar sesión?")) {
       Cookies.remove("token");
+      Cookies.remove("userRole");
       window.location.href = "/";
-      // Aquí iría tu función de logout, ej: logout();
     }
   };
 
   return (
     <>
-      {/* --- MOBILE HEADER (Visible solo en móvil) --- */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-[#312E81] text-white h-16 px-4 flex justify-between items-center shadow-lg transition-transform duration-300">
-        <div className="flex items-center gap-2">
-          {/* Logo simplificado para móvil */}
-          <div className="w-8 h-8 bg-[#10B981] rounded-lg flex items-center justify-center text-[#312E81] font-bold text-xs">
-            IX
+      {/* --- MOBILE HEADER --- */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 h-16 px-4 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-[#312E81] rounded-xl flex items-center justify-center shadow-inner">
+            <span className="font-black text-sm italic text-[#10B981]">IX</span>
           </div>
-          <span className="font-bold text-lg tracking-tight">LA NOVENA</span>
+          <span className="font-black text-lg tracking-tight text-slate-900">
+            La Novena
+          </span>
         </div>
         <button
           onClick={toggleDrawer}
-          className="p-2 hover:bg-white/10 rounded-full transition-colors active:scale-90"
-          aria-label="Toggle Menu"
+          className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-[#312E81]/20"
+          aria-label={isOpen ? "Cerrar menú" : "Abrir menú"}
+          aria-expanded={isOpen}
         >
           {isOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 
-      {/* --- MOBILE OVERLAY (Backdrop con Fade) --- */}
+      {/* --- MOBILE OVERLAY --- */}
       <div
-        className={`fixed inset-0 bg-gray-900/60 z-40 lg:hidden backdrop-blur-sm transition-opacity duration-300 ${
+        className={`fixed inset-0 bg-slate-900/40 z-40 lg:hidden backdrop-blur-sm transition-opacity duration-300 ${
           isOpen
             ? "opacity-100 pointer-events-auto"
             : "opacity-0 pointer-events-none"
         }`}
         onClick={() => setIsOpen(false)}
+        aria-hidden="true"
       />
 
       {/* --- SIDEBAR CONTAINER --- */}
       <aside
         className={`
-          fixed top-0 left-0 z-50 h-full w-72 bg-white shadow-2xl lg:shadow-none border-r border-gray-100
-          transform transition-transform duration-300 cubic-bezier(0.4, 0, 0.2, 1)
+          fixed top-0 left-0 z-50 h-full w-72 bg-white border-r border-slate-200 flex flex-col
+          transform transition-transform duration-300 ease-in-out
           lg:translate-x-0 lg:static
-          ${isOpen ? "translate-x-0" : "-translate-x-full"}
+          ${isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}
         `}
       >
-        {/* 1. HEADER: Identidad de Marca */}
-        <div className="h-20 flex flex-col items-center justify-center border-b border-gray-100 bg-gradient-to-br from-[#312E81] to-[#282566] relative overflow-hidden">
-          {/* Elementos decorativos de fondo */}
-          <div className="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full -mr-8 -mt-8 pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-12 h-12 bg-[#10B981]/10 rounded-full -ml-6 -mb-6 pointer-events-none" />
-
-          <h1 className="text-2xl font-black text-white tracking-tighter relative z-10">
-            LA <span className="text-[#10B981]">NOVENA</span>
-          </h1>
-          <p className="text-[10px] text-indigo-200 tracking-widest uppercase font-medium">
-            Gestión Deportiva
-          </p>
+        {/* 1. HEADER: Identidad de Marca (Horizontal y Optimizado) */}
+        <div className="h-20 flex items-center px-6 border-b border-slate-100 shrink-0">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-3 group outline-none"
+          >
+            <div className="w-10 h-10 bg-[#312E81] rounded-xl flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+              <span className="font-black text-lg italic text-[#10B981]">
+                IX
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-black text-xl tracking-tight text-slate-900 leading-none">
+                La Novena
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                Workspace
+              </span>
+            </div>
+          </Link>
         </div>
 
         {/* 2. BODY: Navegación Scrollable */}
-        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1 custom-scrollbar">
+        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
           {/* Etiqueta de Rol */}
-          <div className="px-3 mb-4 flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+          <div className="px-2 mb-4 flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Menú Principal
             </span>
             {user?.role && (
-              <span className="text-[10px] bg-indigo-50 text-[#312E81] px-2 py-0.5 rounded-full font-bold border border-indigo-100 uppercase">
-                {user.role === "GUARDIAN" ? "Apoderado" : user.role}
+              <span className="text-[10px] bg-indigo-50 text-[#312E81] px-2.5 py-1 rounded-full font-black tracking-wide border border-indigo-100/50 uppercase">
+                {user.role === "GUARDIAN" ? "APODERADO" : user.role}
               </span>
             )}
           </div>
@@ -118,7 +133,7 @@ export default function Sidebar() {
           {/* Items del Menú */}
           {menu.length > 0 ? (
             menu.map((item) => {
-              const Icon = item.icon || LayoutDashboard; // Fallback icon
+              const Icon = item.icon || LayoutDashboard;
               const isActive = pathname === item.href;
 
               return (
@@ -127,17 +142,17 @@ export default function Sidebar() {
                   href={item.href}
                   onClick={() => setIsOpen(false)}
                   className={`
-                    group relative flex items-center gap-3 px-3.5 py-3 rounded-xl font-medium text-sm transition-all duration-200
+                    group relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#312E81]/40
                     ${
                       isActive
-                        ? "bg-[#312E81] text-white shadow-md shadow-indigo-900/20 translate-x-1"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-[#312E81]"
+                        ? "bg-indigo-50/80 text-[#312E81] font-bold"
+                        : "text-slate-600 font-medium hover:bg-slate-50 hover:text-slate-900"
                     }
                   `}
                 >
-                  {/* Indicador lateral activo (opcional, estilo moderno) */}
+                  {/* Indicador lateral activo (Píldora verde esmeralda) */}
                   {isActive && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r-full bg-[#10B981]" />
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-1.5 rounded-r-full bg-[#10B981] shadow-[2px_0_8px_rgba(16,185,129,0.4)]" />
                   )}
 
                   <Icon
@@ -145,71 +160,72 @@ export default function Sidebar() {
                     strokeWidth={isActive ? 2.5 : 2}
                     className={`transition-colors duration-200 ${
                       isActive
-                        ? "text-[#10B981]"
-                        : "text-gray-400 group-hover:text-[#312E81]"
+                        ? "text-[#312E81]"
+                        : "text-slate-400 group-hover:text-slate-600"
                     }`}
                   />
-
-                  <span className="flex-1">{item.title}</span>
-
-                  {/* Flecha sutil en hover */}
-                  {!isActive && (
-                    <ChevronRight
-                      size={16}
-                      className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-gray-300"
-                    />
-                  )}
+                  <span className="flex-1 truncate">{item.title}</span>
                 </Link>
               );
             })
           ) : (
-            // Estado vacío o carga del menú
-            <div className="px-4 py-8 text-center text-sm text-gray-400">
-              No hay opciones disponibles
+            // Estado vacío elegante
+            <div className="px-4 py-8 text-center">
+              <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <LayoutDashboard size={20} className="text-slate-300" />
+              </div>
+              <p className="text-sm text-slate-400 font-medium">
+                Cargando módulos...
+              </p>
             </div>
           )}
         </nav>
 
         {/* 3. FOOTER: Perfil y Acciones */}
-        <div className="p-4 bg-gray-50/50 border-t border-gray-100 mt-auto">
+        <div className="p-4 bg-slate-50/50 border-t border-slate-200 shrink-0">
           {isLoading ? (
-            // Skeleton Loading
-            <div className="flex items-center gap-3 animate-pulse">
-              <div className="w-10 h-10 bg-gray-200 rounded-full" />
+            // Skeleton Loading UI
+            <div className="flex items-center gap-3 animate-pulse p-2">
+              <div className="w-10 h-10 bg-slate-200 rounded-full shrink-0" />
               <div className="flex-1 space-y-2">
-                <div className="h-3 bg-gray-200 rounded w-3/4" />
-                <div className="h-2 bg-gray-200 rounded w-1/2" />
+                <div className="h-3 bg-slate-200 rounded w-24" />
+                <div className="h-2 bg-slate-200 rounded w-32" />
               </div>
             </div>
           ) : (
             // User Card
-            <div className="group relative">
-              <div className="flex items-center gap-3 mb-4 p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-gray-100 cursor-default">
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#312E81] to-[#4F46E5] flex items-center justify-center text-white shadow-sm">
-                    <User size={20} />
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3 p-2 rounded-xl bg-white border border-slate-100 shadow-sm cursor-default">
+                <div className="relative shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-[#312E81] flex items-center justify-center text-white shadow-inner">
+                    <User size={18} />
                   </div>
-                  {/* Indicador Online */}
+                  {/* Indicador Online (Esmeralda) */}
                   <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#10B981] border-2 border-white rounded-full"></div>
                 </div>
 
                 <div className="overflow-hidden flex-1">
-                  <p className="text-sm font-bold text-gray-800 truncate leading-tight">
+                  <p className="text-sm font-bold text-slate-900 truncate leading-tight">
                     {user?.fullName || "Usuario"}
                   </p>
-                  <p className="text-[11px] text-gray-500 truncate font-medium flex items-center gap-1">
-                    <ShieldCheck size={10} className="text-[#10B981]" />
-                    {user?.email || "usuario@lanovena.cl"}
+                  <p className="text-xs text-slate-500 truncate font-medium flex items-center gap-1 mt-0.5">
+                    <ShieldCheck
+                      size={12}
+                      className="text-[#10B981] shrink-0"
+                    />
+                    <span className="truncate">
+                      {user?.email || "usuario@lanovena.cl"}
+                    </span>
                   </p>
                 </div>
               </div>
 
-              {/* Botón Logout */}
+              {/* Botón Logout (Rediseñado para no competir visualmente con el menú) */}
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-100 py-2.5 rounded-lg transition-all duration-200 active:scale-95 shadow-sm"
+                className="w-full flex items-center justify-center gap-2 text-sm font-bold text-slate-600 hover:text-red-600 hover:bg-red-50 py-2.5 rounded-xl transition-all duration-200 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-red-500/20"
               >
-                <LogOut size={14} />
+                <LogOut size={16} strokeWidth={2.5} />
                 Cerrar Sesión
               </button>
             </div>

@@ -4,7 +4,6 @@ import React, { useState, useMemo, useEffect } from "react";
 import {
   Loader2,
   School,
-  ChevronDown,
   Save,
   Building2,
   CreditCard,
@@ -14,19 +13,19 @@ import {
   Lock,
   Unlock,
   UploadCloud,
-  CheckCircle2,
   Copy,
+  CheckCircle2,
+  ArrowRight,
 } from "lucide-react";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { gql } from "@apollo/client";
 import { useAlert } from "@/src/providers/alert";
 import { useUser } from "@/src/providers/me";
-import { PLANS } from "@/src/utils/plans"; // Asegúrate que esta ruta es correcta
+import { PLANS } from "@/src/utils/plans";
 
-// === GRAPHQL OPERATIONS ===
 const GET_SCHOOL_SETTINGS = gql`
-  query GetSchoolSettings($schoolId: ID!) {
-    school(id: $schoolId) {
+  query GetSchoolSettings($schoolId: String!) {
+    getSettings(schoolId: $schoolId) {
       id
       name
       slug
@@ -58,8 +57,6 @@ export default function SettingsPage() {
   const { showAlert } = useAlert();
   const { user, loading: userLoading } = useUser();
 
-  // State
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [isSlugLocked, setIsSlugLocked] = useState(true);
   const [formState, setFormState] = useState({
     name: "",
@@ -68,53 +65,46 @@ export default function SettingsPage() {
     logoUrl: "",
   });
 
-  // --- ESCUELAS ---
-  const availableSchools = useMemo(() => {
-    if (!user) return [];
-    // @ts-ignore
-    const schools = user.schools || (user.school ? [user.school] : []);
-    return schools.map((s: any) => s.school || s);
+  // Derivamos la escuela activa (heredado silenciosamente del Layout)
+  const activeSchoolId = useMemo(() => {
+    if (!user) return null;
+    const schools: any = user.schools || (user.school ? [user.school] : []);
+    return schools[0]?.school?.id || schools[0]?.id || null;
   }, [user]);
 
-  useEffect(() => {
-    if (availableSchools.length > 0 && !selectedSchoolId) {
-      setSelectedSchoolId(availableSchools[0].id);
-    }
-  }, [availableSchools, selectedSchoolId]);
-
-  // --- QUERY ---
   const { data, loading, refetch }: any = useQuery(GET_SCHOOL_SETTINGS, {
-    variables: { schoolId: selectedSchoolId },
-    skip: !selectedSchoolId,
+    variables: { schoolId: activeSchoolId },
+    skip: !activeSchoolId,
     fetchPolicy: "network-only",
   });
 
   useEffect(() => {
-    if (data?.school && !loading) {
+    const school = data?.getSettings;
+    console.log({ school });
+    if (school && !loading) {
       setFormState({
-        name: data.school.name || "",
-        slug: data.school.slug || "",
-        bankDetails: data.school.bankDetails || "",
-        logoUrl: data.school.logoUrl || "",
+        name: school.name || "",
+        slug: school.slug || "",
+        bankDetails: school.bankDetails || "",
+        logoUrl: school.logoUrl || "",
       });
     }
   }, [data, loading]);
 
-  // --- MUTATION ---
   const [updateSchool, { loading: saving }] = useMutation(UPDATE_SCHOOL);
 
-  // --- HANDLERS ---
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSchoolId) return;
+    if (!activeSchoolId) return;
 
-    if (formState.slug.length < 3)
+    if (formState.slug.length < 3) {
       return showAlert("La URL debe tener al menos 3 caracteres", "warning");
+    }
 
     try {
       await updateSchool({
         variables: {
-          id: selectedSchoolId,
+          id: activeSchoolId,
           input: {
             name: formState.name,
             slug: formState.slug,
@@ -126,9 +116,8 @@ export default function SettingsPage() {
       setIsSlugLocked(true);
       refetch();
     } catch (error: any) {
-      console.error(error);
       const msg = error.message.includes("Unique constraint")
-        ? "Esa URL ya está en uso por otra escuela"
+        ? "Esa URL ya está en uso por otra escuela. Intenta con otra."
         : error.message;
       showAlert(msg, "error");
     }
@@ -139,134 +128,108 @@ export default function SettingsPage() {
     showAlert("URL copiada al portapapeles", "success");
   };
 
-  // --- RENDER ---
-  if (userLoading) {
+  if (userLoading || loading) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 animate-fade-in">
         <Loader2 className="w-10 h-10 animate-spin text-[#312E81]" />
-        <p className="text-gray-500 font-medium animate-pulse">
+        <p className="text-slate-500 font-medium animate-pulse">
           Cargando configuración...
         </p>
       </div>
     );
   }
 
-  const school = data?.school;
+  const school = data?.getSettings;
   const isCommercial = school?.mode === "COMMERCIAL";
   const fullUrl = `lanovena.cl/escuelas/${formState.slug}`;
 
+  // Lógica de Planes
+  const currentPlanType = school?.planType || "SEMILLERO";
+  const planConfig = PLANS.find((p) => p.id === currentPlanType) || PLANS[0];
+  const currentPlayers = school?._count?.players || 0;
+  const currentCoaches = school?._count?.coaches || 0;
+
+  const parseLimit = (val: number | string) =>
+    val === "Ilimitados" || val === "Ilimitadas" ? Infinity : Number(val);
+  const maxPlayers = parseLimit(planConfig.limits.players);
+  const maxCoaches = parseLimit(planConfig.limits.coaches);
+
+  const calculatePercent = (current: number, max: number) =>
+    max === Infinity ? 5 : Math.min(Math.round((current / max) * 100), 100);
+  const playerPercent = calculatePercent(currentPlayers, maxPlayers);
+  const coachPercent = calculatePercent(currentCoaches, maxCoaches);
+
   return (
-    <div className="max-w-6xl mx-auto p-6 md:p-8 space-y-8 animate-fade-in">
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-200">
-        <div>
-          <h1 className="text-3xl font-black text-[#111827] tracking-tight mb-2">
-            Configuración General
-          </h1>
-          <p className="text-gray-500 text-lg">
-            Administra la identidad pública y los datos operativos.
-          </p>
-        </div>
-
-        {availableSchools.length > 0 && (
-          <div className="bg-white border border-gray-200 shadow-sm rounded-xl px-3 py-2 flex items-center gap-2 min-w-[200px]">
-            <div className="bg-indigo-50 p-2 rounded-lg">
-              <School className="w-4 h-4 text-[#312E81]" />
-            </div>
-            <div className="relative flex-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                Escuela
-              </span>
-              {availableSchools.length > 1 ? (
-                <select
-                  value={selectedSchoolId}
-                  onChange={(e) => setSelectedSchoolId(e.target.value)}
-                  className="bg-transparent font-bold text-[#312E81] text-sm outline-none w-full appearance-none cursor-pointer"
-                >
-                  {availableSchools.map((s: any) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span className="font-bold text-[#312E81] text-sm block truncate">
-                  {availableSchools[0].name}
-                </span>
-              )}
-            </div>
-            {availableSchools.length > 1 && (
-              <ChevronDown className="w-4 h-4 text-gray-400" />
-            )}
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 h-96 bg-gray-100 rounded-2xl animate-pulse"></div>
-          <div className="h-96 bg-gray-100 rounded-2xl animate-pulse"></div>
-        </div>
-      ) : (
-        <form
-          onSubmit={handleSave}
-          className="grid grid-cols-1 lg:grid-cols-3 gap-8"
-        >
-          {/* === COLUMNA PRINCIPAL (FORMULARIOS) === */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* CARD: IDENTIDAD */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-100 text-[#312E81] rounded-lg">
-                    <Building2 size={20} />
-                  </div>
-                  <h3 className="font-bold text-gray-900 text-lg">
+    <div className="space-y-8 animate-fade-in">
+      <form
+        onSubmit={handleSave}
+        className="grid grid-cols-1 xl:grid-cols-3 gap-8"
+      >
+        {/* === COLUMNA IZQUIERDA: FORMULARIOS === */}
+        <div className="xl:col-span-2 space-y-8">
+          {/* Tarjeta: Identidad Visual */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-50 text-[#312E81] rounded-xl border border-indigo-100">
+                  <Building2 size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-lg leading-tight">
                     Identidad de la Escuela
                   </h3>
+                  <p className="text-xs font-medium text-slate-500">
+                    Datos públicos y presentación gráfica.
+                  </p>
                 </div>
-                <span className="text-xs font-medium text-gray-500 bg-white px-3 py-1 rounded-full border border-gray-200">
-                  ID: {school?.id.substring(0, 8)}...
-                </span>
+              </div>
+              <span className="hidden sm:inline-block text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                ID: {school?.id.substring(0, 8)}
+              </span>
+            </div>
+
+            <div className="p-8 space-y-8">
+              {/* Logo Upload (Mock) */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                <div className="w-24 h-24 rounded-[1.5rem] bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 shrink-0 overflow-hidden relative group">
+                  {formState.logoUrl ? (
+                    <img
+                      src={formState.logoUrl}
+                      alt="Logo"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <School size={32} />
+                  )}
+                  <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <UploadCloud size={24} className="text-[#312E81]" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-900 mb-1">
+                    Escudo / Logotipo Oficial
+                  </label>
+                  <p className="text-sm text-slate-500 mb-4 max-w-md">
+                    Visible en carnets digitales y portal de apoderados. Formato
+                    cuadrado recomendado.
+                  </p>
+                  <button
+                    type="button"
+                    disabled
+                    className="text-xs font-bold text-slate-400 bg-slate-100 px-4 py-2 rounded-xl flex items-center gap-2 cursor-not-allowed"
+                  >
+                    <UploadCloud size={16} /> Próximamente
+                  </button>
+                </div>
               </div>
 
-              <div className="p-6 md:p-8 space-y-6">
-                {/* Logo Placeholder */}
-                <div className="flex items-center gap-6">
-                  <div className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 shrink-0">
-                    {formState.logoUrl ? (
-                      <img
-                        src={formState.logoUrl}
-                        alt="Logo"
-                        className="w-full h-full object-cover rounded-2xl"
-                      />
-                    ) : (
-                      <School size={32} />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-sm font-bold text-gray-900 mb-1">
-                      Logotipo Oficial
-                    </label>
-                    <p className="text-xs text-gray-500 mb-3">
-                      Se usará en los carnets digitales y en el portal de
-                      apoderados.
-                    </p>
-                    <button
-                      type="button"
-                      disabled
-                      className="text-xs font-bold text-[#312E81] bg-indigo-50 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors flex items-center gap-2 opacity-50 cursor-not-allowed"
-                    >
-                      <UploadCloud size={14} /> Subir Imagen (Pronto)
-                    </button>
-                  </div>
-                </div>
+              <div className="h-px w-full bg-slate-100"></div>
 
-                <hr className="border-gray-100" />
-
+              {/* Formulario Nombres y URL */}
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Nombre del Club / Escuela
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    Nombre del Club
                   </label>
                   <input
                     type="text"
@@ -275,40 +238,38 @@ export default function SettingsPage() {
                     onChange={(e) =>
                       setFormState({ ...formState, name: e.target.value })
                     }
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#312E81] focus:border-transparent outline-none transition-all"
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white rounded-xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none transition-all shadow-sm"
                     placeholder="Ej: Club Deportivo Los Leones"
                   />
                 </div>
 
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-bold text-gray-700">
-                      URL Personalizada
+                    <label className="block text-sm font-bold text-slate-700">
+                      URL del Portal de Apoderados
                     </label>
                     <button
                       type="button"
                       onClick={() => setIsSlugLocked(!isSlugLocked)}
-                      className={`text-xs flex items-center gap-1 font-bold px-2 py-1 rounded transition-colors ${
+                      className={`text-xs flex items-center gap-1.5 font-bold px-3 py-1.5 rounded-lg transition-colors ${
                         isSlugLocked
-                          ? "text-gray-500 hover:bg-gray-100"
-                          : "text-amber-600 bg-amber-50"
+                          ? "text-slate-500 hover:bg-slate-100"
+                          : "text-amber-700 bg-amber-100 border border-amber-200"
                       }`}
                     >
                       {isSlugLocked ? <Lock size={12} /> : <Unlock size={12} />}
-                      {isSlugLocked
-                        ? "Desbloquear edición"
-                        : "Edición habilitada"}
+                      {isSlugLocked ? "Modificar enlace" : "Edición habilitada"}
                     </button>
                   </div>
 
                   <div
-                    className={`flex items-center border rounded-xl overflow-hidden transition-all ${
+                    className={`flex items-stretch border rounded-xl overflow-hidden transition-all shadow-sm ${
                       isSlugLocked
-                        ? "bg-gray-50 border-gray-200"
+                        ? "bg-slate-50 border-slate-200"
                         : "bg-white border-amber-300 ring-4 ring-amber-50"
                     }`}
                   >
-                    <div className="bg-gray-100 px-4 py-3 border-r border-gray-200 text-gray-500 text-sm font-medium select-none">
+                    <div className="bg-slate-100 px-4 py-3.5 border-r border-slate-200 text-slate-500 text-sm font-medium select-none flex items-center">
                       lanovena.cl/escuelas/
                     </div>
                     <input
@@ -323,9 +284,9 @@ export default function SettingsPage() {
                             .replace(/[^a-z0-9-]/g, "-"),
                         })
                       }
-                      className={`w-full px-4 py-3 text-sm font-mono outline-none bg-transparent ${
+                      className={`w-full px-4 py-3.5 text-sm font-mono outline-none bg-transparent ${
                         isSlugLocked
-                          ? "text-gray-500 cursor-not-allowed"
+                          ? "text-slate-500 cursor-not-allowed"
                           : "text-[#312E81] font-bold"
                       }`}
                     />
@@ -333,7 +294,7 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(fullUrl)}
-                        className="p-3 text-gray-400 hover:text-[#312E81] hover:bg-gray-200 transition-colors border-l border-gray-200"
+                        className="px-4 text-slate-400 hover:text-[#312E81] hover:bg-indigo-50 transition-colors border-l border-slate-200 flex items-center justify-center"
                       >
                         <Copy size={16} />
                       </button>
@@ -341,261 +302,248 @@ export default function SettingsPage() {
                   </div>
 
                   {!isSlugLocked && (
-                    <div className="mt-2 flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-100">
-                      <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                      <p>
-                        <strong>¡Cuidado!</strong> Cambiar la URL hará que los
-                        códigos QR impresos anteriormente dejen de funcionar.
+                    <div className="mt-3 flex items-start gap-3 text-xs text-amber-800 bg-amber-50 p-4 rounded-xl border border-amber-200">
+                      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                      <p className="leading-relaxed">
+                        <strong className="font-black">Atención:</strong> Si
+                        cambias tu URL, los códigos QR que ya hayas impreso o
+                        compartido dejarán de funcionar. Hazlo con precaución.
                       </p>
                     </div>
                   )}
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* CARD: BANCO (Condicional) */}
-            {isCommercial ? (
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-                  <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
-                    <CreditCard size={20} />
-                  </div>
-                  <h3 className="font-bold text-gray-900 text-lg">
-                    Datos de Transferencia
-                  </h3>
-                </div>
-                <div className="p-6 md:p-8">
-                  <div className="grid md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                      <label className="block text-sm font-bold text-gray-700">
-                        Información Bancaria
-                      </label>
-                      <p className="text-xs text-gray-500 leading-relaxed">
-                        Datos para que los apoderados transfieran manualmente.
-                      </p>
-                      <textarea
-                        rows={5}
-                        value={formState.bankDetails}
-                        onChange={(e) =>
-                          setFormState({
-                            ...formState,
-                            bankDetails: e.target.value,
-                          })
-                        }
-                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none font-mono resize-none bg-gray-50 focus:bg-white transition-colors"
-                        placeholder={`Banco:\nTipo de Cuenta:\nNúmero:\nRUT:\nEmail:`}
-                      />
-                    </div>
-
-                    <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 text-white shadow-xl flex flex-col justify-between min-h-[180px]">
-                      <div className="flex justify-between items-start opacity-50">
-                        <CreditCard size={24} />
-                        <span className="text-xs font-mono uppercase tracking-widest">
-                          Vista Previa
-                        </span>
-                      </div>
-                      <div className="space-y-1 font-mono text-xs text-gray-300 overflow-hidden">
-                        {formState.bankDetails ? (
-                          formState.bankDetails
-                            .split("\n")
-                            .slice(0, 5)
-                            .map((line, i) => (
-                              <p key={i} className="truncate">
-                                {line}
-                              </p>
-                            ))
-                        ) : (
-                          <>
-                            <p>Banco: ---</p>
-                            <p>Cuenta: ---</p>
-                            <p>RUT: ---</p>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 flex items-start gap-4">
-                <div className="p-2 bg-gray-200 text-gray-500 rounded-lg shrink-0">
+          {/* Tarjeta: Banco (Modo Comercial) */}
+          {isCommercial ? (
+            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-50 text-[#10B981] rounded-xl border border-emerald-100">
                   <CreditCard size={20} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-gray-600">
-                    Módulo Financiero Desactivado
+                  <h3 className="font-bold text-slate-900 text-lg leading-tight">
+                    Finanzas y Cobranza
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1 max-w-lg">
-                    Tu escuela está en modo <strong>INSTITUTIONAL</strong>. Las
-                    funciones de cobranza y datos bancarios están ocultas.
+                  <p className="text-xs font-medium text-slate-500">
+                    Datos para pagos de apoderados.
                   </p>
                 </div>
               </div>
-            )}
 
-            <div className="flex justify-end pt-2">
+              <div className="p-8">
+                <div className="grid md:grid-cols-2 gap-8">
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-slate-700">
+                      Información de Transferencia
+                    </label>
+                    <p className="text-sm text-slate-500 leading-relaxed mb-4">
+                      Estos datos aparecerán en la App de los apoderados cuando
+                      su semáforo de pagos esté en rojo.
+                    </p>
+                    <textarea
+                      rows={5}
+                      value={formState.bankDetails}
+                      onChange={(e) =>
+                        setFormState({
+                          ...formState,
+                          bankDetails: e.target.value,
+                        })
+                      }
+                      className="w-full border border-slate-200 rounded-xl px-4 py-4 text-sm focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] outline-none font-mono resize-none bg-slate-50 focus:bg-white transition-all shadow-sm leading-relaxed"
+                      placeholder={`Banco: Estado\nTipo: Cuenta RUT\nNúmero: 12345678\nRUT: 12.345.678-9\nCorreo: pagos@club.cl`}
+                    />
+                  </div>
+
+                  {/* Vista Previa Móvil (Vibe Landing) */}
+                  <div className="bg-gradient-to-br from-slate-900 to-[#312E81] rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[220px]">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
+                    <div className="flex justify-between items-center opacity-70 mb-4 relative z-10">
+                      <CreditCard size={24} />
+                      <span className="text-[10px] font-black uppercase tracking-widest bg-white/10 px-3 py-1 rounded-full">
+                        Vista Apoderado
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 font-mono text-sm text-indigo-100 relative z-10">
+                      {formState.bankDetails ? (
+                        formState.bankDetails
+                          .split("\n")
+                          .slice(0, 5)
+                          .map((line, i) => (
+                            <p key={i} className="truncate">
+                              {line}
+                            </p>
+                          ))
+                      ) : (
+                        <div className="opacity-50 space-y-2">
+                          <p>Banco: ---</p>
+                          <p>Cuenta: ---</p>
+                          <p>RUT: ---</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-50 border border-slate-200 rounded-[2rem] p-8 flex items-start gap-5">
+              <div className="p-3 bg-white text-slate-400 rounded-2xl shadow-sm shrink-0 border border-slate-100">
+                <CreditCard size={24} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-lg">
+                  Módulo Financiero Oculto
+                </h3>
+                <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                  El sistema opera en modo{" "}
+                  <strong className="text-slate-700">
+                    Institucional / Municipal
+                  </strong>
+                  . Las funciones de cobranza, deudas y datos bancarios están
+                  desactivadas para toda la comunidad.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Botón Flotante/Sticky de Guardar */}
+          <div className="pt-4 flex justify-end">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-[#312E81] hover:bg-indigo-900 text-white px-10 py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/20 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {saving ? (
+                <Loader2 className="animate-spin w-5 h-5" />
+              ) : (
+                <Save className="w-5 h-5" />
+              )}
+              {saving ? "Guardando..." : "Guardar Cambios"}
+            </button>
+          </div>
+        </div>
+
+        {/* === COLUMNA DERECHA: INFO Y SOPORTE === */}
+        <div className="space-y-6">
+          {/* Tarjeta de Suscripción */}
+          <div className="bg-gradient-to-br from-[#312E81] to-slate-900 rounded-[2rem] shadow-xl text-white overflow-hidden relative border border-indigo-800">
+            <div className="absolute top-0 right-0 p-8 opacity-5 transform rotate-12 scale-150 pointer-events-none">
+              <ShieldCheck size={180} />
+            </div>
+
+            <div className="p-8 relative z-10">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <p className="text-indigo-300 text-[10px] font-black uppercase tracking-widest mb-1.5">
+                    Plan Contratado
+                  </p>
+                  <h2 className="text-3xl font-black tracking-tight">
+                    {planConfig.name}
+                  </h2>
+                </div>
+                <span
+                  className={`text-[10px] font-black tracking-widest uppercase px-3 py-1.5 rounded-lg shadow-sm border ${
+                    school?.subscriptionStatus === "ACTIVE"
+                      ? "bg-[#10B981] text-white border-emerald-400"
+                      : "bg-amber-500 text-white border-amber-400"
+                  }`}
+                >
+                  {school?.subscriptionStatus === "ACTIVE"
+                    ? "Al día"
+                    : "Pendiente"}
+                </span>
+              </div>
+
+              <div className="space-y-6 mb-10">
+                {/* Progreso Jugadores */}
+                <div>
+                  <div className="flex justify-between text-xs mb-2 font-medium">
+                    <span className="text-indigo-200">
+                      Matrículas Utilizadas
+                    </span>
+                    <span className="font-bold bg-white/10 px-2 py-0.5 rounded">
+                      {currentPlayers} /{" "}
+                      {maxPlayers === Infinity ? "∞" : maxPlayers}
+                    </span>
+                  </div>
+                  <div className="h-2.5 bg-indigo-950/50 rounded-full overflow-hidden border border-indigo-800/50">
+                    <div
+                      className={`h-full transition-all duration-1000 ease-out rounded-full ${
+                        maxPlayers === Infinity
+                          ? "bg-[#10B981]"
+                          : playerPercent > 90
+                            ? "bg-red-400"
+                            : playerPercent > 75
+                              ? "bg-amber-400"
+                              : "bg-[#10B981]"
+                      }`}
+                      style={{ width: `${playerPercent}%` }}
+                    ></div>
+                  </div>
+                  {maxPlayers !== Infinity && playerPercent >= 90 && (
+                    <p className="text-[10px] text-red-300 mt-2 font-bold flex items-center gap-1">
+                      <AlertTriangle size={12} /> Límite de capacidad cercano.
+                    </p>
+                  )}
+                </div>
+
+                {/* Progreso Profesores */}
+                <div>
+                  <div className="flex justify-between text-xs mb-2 font-medium">
+                    <span className="text-indigo-200">Profesores / Staff</span>
+                    <span className="font-bold bg-white/10 px-2 py-0.5 rounded">
+                      {currentCoaches} /{" "}
+                      {maxCoaches === Infinity ? "∞" : maxCoaches}
+                    </span>
+                  </div>
+                  <div className="h-2.5 bg-indigo-950/50 rounded-full overflow-hidden border border-indigo-800/50">
+                    <div
+                      className="h-full bg-blue-400 transition-all duration-1000 ease-out rounded-full"
+                      style={{ width: `${coachPercent}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+
               <button
-                type="submit"
-                disabled={saving}
-                className="bg-[#312E81] hover:bg-indigo-800 text-white px-8 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-900/20 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                type="button"
+                className="w-full py-4 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2"
               >
-                {saving ? (
-                  <Loader2 className="animate-spin" size={20} />
+                {maxPlayers === Infinity ? (
+                  <>
+                    <CheckCircle2 size={18} /> Plan Élite Activo
+                  </>
                 ) : (
-                  <Save size={20} />
+                  <>
+                    Mejorar Capacidad <ArrowRight size={16} />
+                  </>
                 )}
-                Guardar Configuración
               </button>
             </div>
           </div>
 
-          {/* === COLUMNA LATERAL (INFO REAL USANDO PLANS) === */}
-          <div className="space-y-6">
-            {/* PLAN CARD LOGIC */}
-            {(() => {
-              // 1. Obtener configuración del plan actual desde la constante global PLANS
-              const currentPlanType = school?.planType || "SEMILLERO";
-              const planConfig =
-                PLANS.find((p) => p.id === currentPlanType) || PLANS[0];
-
-              // 2. Datos actuales
-              const currentPlayers = school?._count?.players || 0;
-              const currentCoaches = school?._count?.coaches || 0;
-
-              // 3. Helpers para límites
-              const parseLimit = (val: number | string) =>
-                val === "Ilimitados" || val === "Ilimitadas"
-                  ? Infinity
-                  : Number(val);
-              const maxPlayers = parseLimit(planConfig.limits.players);
-              const maxCoaches = parseLimit(planConfig.limits.coaches);
-
-              // 4. Cálculo de porcentajes
-              const calculatePercent = (current: number, max: number) => {
-                if (max === Infinity) return 5; // Muestra un 5% visual si es ilimitado
-                return Math.min(Math.round((current / max) * 100), 100);
-              };
-
-              const playerPercent = calculatePercent(
-                currentPlayers,
-                maxPlayers,
-              );
-              const coachPercent = calculatePercent(currentCoaches, maxCoaches);
-
-              return (
-                <div className="bg-[#312E81] rounded-2xl shadow-xl text-white overflow-hidden relative">
-                  {/* Background Pattern */}
-                  <div className="absolute top-0 right-0 p-8 opacity-5 transform rotate-12 scale-150 pointer-events-none">
-                    <ShieldCheck size={180} />
-                  </div>
-
-                  <div className="p-6 relative z-10">
-                    <div className="flex justify-between items-start mb-6">
-                      <div>
-                        <p className="text-indigo-300 text-xs font-bold uppercase tracking-widest mb-1">
-                          Tu Suscripción
-                        </p>
-                        <h2 className="text-2xl font-black">
-                          {planConfig.name}
-                        </h2>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded shadow-sm border ${
-                          school?.subscriptionStatus === "ACTIVE"
-                            ? "bg-emerald-500 text-white border-emerald-400"
-                            : "bg-amber-500 text-white border-amber-400"
-                        }`}
-                      >
-                        {school?.subscriptionStatus === "ACTIVE"
-                          ? "ACTIVO"
-                          : "PENDIENTE"}
-                      </span>
-                    </div>
-
-                    <div className="space-y-5 mb-8">
-                      {/* Barra Progreso Jugadores */}
-                      <div>
-                        <div className="flex justify-between text-xs mb-1.5">
-                          <span className="text-indigo-200">
-                            Jugadores Matriculados
-                          </span>
-                          <span className="font-bold">
-                            {currentPlayers} /{" "}
-                            {maxPlayers === Infinity ? "∞" : maxPlayers}
-                          </span>
-                        </div>
-                        <div className="h-2 bg-indigo-900/50 rounded-full overflow-hidden border border-indigo-500/30">
-                          <div
-                            className={`h-full transition-all duration-1000 ease-out ${
-                              maxPlayers === Infinity
-                                ? "bg-emerald-400"
-                                : playerPercent > 90
-                                  ? "bg-red-400"
-                                  : playerPercent > 75
-                                    ? "bg-amber-400"
-                                    : "bg-emerald-400"
-                            }`}
-                            style={{ width: `${playerPercent}%` }}
-                          ></div>
-                        </div>
-                        {maxPlayers !== Infinity && playerPercent >= 90 && (
-                          <p className="text-[10px] text-amber-300 mt-1">
-                            ⚠️ Estás llegando al límite de tu plan.
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Barra Progreso Staff */}
-                      <div>
-                        <div className="flex justify-between text-xs mb-1.5">
-                          <span className="text-indigo-200">Staff Técnico</span>
-                          <span className="font-bold">
-                            {currentCoaches} /{" "}
-                            {maxCoaches === Infinity ? "∞" : maxCoaches}
-                          </span>
-                        </div>
-                        <div className="h-2 bg-indigo-900/50 rounded-full overflow-hidden border border-indigo-500/30">
-                          <div
-                            className="h-full bg-blue-400 transition-all duration-1000 ease-out"
-                            style={{ width: `${coachPercent}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="w-full py-3 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 active:scale-95"
-                    >
-                      <CheckCircle2 size={16} />
-                      {maxPlayers === Infinity
-                        ? "Ver detalles del Plan"
-                        : "Mejorar Plan"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* SUPPORT CARD */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <h4 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
-                <Globe size={16} className="text-indigo-600" /> Soporte Técnico
-              </h4>
-              <p className="text-sm text-gray-500 leading-relaxed mb-4">
-                ¿Necesitas cambiar el modo de la escuela (Comercial /
-                Institucional) o reportar un problema?
-              </p>
-              <a
-                href="mailto:soporte@lanovena.cl"
-                className="text-sm font-bold text-[#312E81] hover:underline flex items-center gap-1"
-              >
-                soporte@lanovena.cl
-              </a>
+          {/* Tarjeta de Soporte */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-8 text-center sm:text-left">
+            <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center mb-4 mx-auto sm:mx-0">
+              <Globe size={24} className="text-[#312E81]" />
             </div>
+            <h4 className="font-bold text-slate-900 mb-2">Soporte y Ayuda</h4>
+            <p className="text-sm text-slate-500 leading-relaxed mb-6">
+              ¿Necesitas cambiar el modo operativo de la escuela, eliminar
+              registros o reportar un error del sistema?
+            </p>
+            <a
+              href="mailto:soporte@lanovena.cl"
+              className="inline-flex w-full items-center justify-center gap-2 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-4 py-3 rounded-xl transition-colors"
+            >
+              Contactar a soporte
+            </a>
           </div>
-        </form>
-      )}
+        </div>
+      </form>
     </div>
   );
 }

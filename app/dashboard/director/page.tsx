@@ -133,6 +133,7 @@ export default function DirectorDashboard() {
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 md:p-10 space-y-8 animate-fade-in">
       {/* 1. HEADER CONTEXTUAL */}
+      {/*
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-gray-200">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -175,6 +176,7 @@ export default function DirectorDashboard() {
           </Link>
         </div>
       </header>
+  */}
 
       {/* 2. KPI GRID (Stats Rápidas) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

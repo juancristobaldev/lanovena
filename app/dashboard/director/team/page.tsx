@@ -171,6 +171,7 @@ export default function DirectorDirectoryPage() {
   return (
     <div className="max-w-7xl mx-auto p-6 md:p-8 space-y-10 animate-fade-in font-sans">
       {/* 1. HEADER & SELECTOR DE ESCUELAS */}
+      {/*
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-200">
         <div>
           <h1 className="text-3xl font-black text-[#111827] tracking-tight mb-2 flex items-center gap-3">
@@ -217,6 +218,7 @@ export default function DirectorDirectoryPage() {
           )}
         </div>
       </div>
+    */}
 
       {loading ? (
         <LoadingSkeleton />

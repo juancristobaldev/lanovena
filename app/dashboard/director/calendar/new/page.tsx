@@ -21,11 +21,13 @@ import {
   Map,
   School,
   ChevronDown,
+  AlertCircle,
 } from "lucide-react";
-import { gql } from "@apollo/client";
-import { useMutation, useQuery } from "@apollo/client/react";
+
 import { useAlert } from "@/src/providers/alert";
 import { useUser } from "@/src/providers/me";
+import { gql } from "@apollo/client";
+import { useMutation, useQuery } from "@apollo/client/react";
 
 // === TYPES ===
 interface SessionFormValues {
@@ -58,7 +60,18 @@ interface TacticalBoard {
   id: string;
   title: string;
   description?: string;
-  animation?: any;
+  animation?: boolean; // Cambiado de any a boolean (asumiendo que indica si tiene o no)
+}
+
+// Tipos para las respuestas de GraphQL
+interface CategoriesData {
+  categories: Category[];
+}
+interface ExercisesData {
+  mySchoolExercises: Exercise[];
+}
+interface BoardsData {
+  tacticalBoardsByCategory: TacticalBoard[];
 }
 
 // === GRAPHQL ===
@@ -115,7 +128,6 @@ export default function DirectorNewSessionPage() {
   const { showAlert } = useAlert();
   const { user, loading: userLoading } = useUser();
 
-  // Estados UI
   const [sessionType, setSessionType] = useState<"TRAINING" | "MATCH">(
     "TRAINING",
   );
@@ -133,7 +145,7 @@ export default function DirectorNewSessionPage() {
   } = useForm<SessionFormValues>({
     defaultValues: {
       notify: true,
-      location: "Cancha Principal",
+      location: "",
       date: new Date().toISOString().split("T")[0],
       time: "18:00",
       exerciseIds: [],
@@ -145,7 +157,7 @@ export default function DirectorNewSessionPage() {
   const selectedExerciseIds = watch("exerciseIds") || [];
   const selectedBoardIds = watch("tacticalBoardIds") || [];
 
-  // --- ESCUELAS (Lógica de Director) ---
+  // --- ESCUELAS ---
   const availableSchools = useMemo(() => {
     if (!user) return [];
     const schools = user.schools || (user.school ? [user.school] : []);
@@ -159,25 +171,21 @@ export default function DirectorNewSessionPage() {
   }, [availableSchools, selectedSchoolId]);
 
   // --- QUERIES ---
-  const { data: catData, loading: loadingCategories }: any = useQuery(
-    GET_CATEGORIES_SELECT,
-    {
+  const { data: catData, loading: loadingCategories } =
+    useQuery<CategoriesData>(GET_CATEGORIES_SELECT, {
       variables: { schoolId: selectedSchoolId },
       skip: !selectedSchoolId,
       fetchPolicy: "cache-and-network",
-    },
-  );
+    });
 
-  const { data: exercisesData, loading: loadingExercises }: any = useQuery(
-    GET_EXERCISES,
-    {
+  const { data: exercisesData, loading: loadingExercises } =
+    useQuery<ExercisesData>(GET_EXERCISES, {
       variables: { schoolId: selectedSchoolId },
       skip: !selectedSchoolId,
       fetchPolicy: "cache-and-network",
-    },
-  );
+    });
 
-  const { data: boardsData, loading: loadingBoards }: any = useQuery(
+  const { data: boardsData, loading: loadingBoards } = useQuery<BoardsData>(
     GET_BOARDS_BY_CATEGORY,
     {
       variables: { categoryId: selectedCategoryId },
@@ -186,9 +194,9 @@ export default function DirectorNewSessionPage() {
     },
   );
 
-  const categories: Category[] = catData?.categories || [];
-  const allExercises: Exercise[] = exercisesData?.mySchoolExercises || [];
-  const allBoards: TacticalBoard[] = boardsData?.tacticalBoardsByCategory || [];
+  const categories = catData?.categories || [];
+  const allExercises = exercisesData?.mySchoolExercises || [];
+  const allBoards = boardsData?.tacticalBoardsByCategory || [];
 
   // --- MUTATIONS ---
   const [createTraining, { loading: loadingTraining }] =
@@ -198,20 +206,18 @@ export default function DirectorNewSessionPage() {
   const loading = loadingTraining || loadingMatch || userLoading;
   const themeBg = sessionType === "MATCH" ? "bg-[#312E81]" : "bg-[#10B981]";
   const themeBorder =
-    sessionType === "MATCH" ? "focus:ring-[#312E81]" : "focus:ring-[#10B981]";
+    sessionType === "MATCH"
+      ? "focus:ring-[#312E81] border-[#312E81]/20"
+      : "focus:ring-[#10B981] border-[#10B981]/20";
 
   // --- LÓGICA ORDENAMIENTO ---
   const handleSelection = (id: string, type: "EXERCISE" | "BOARD") => {
     const list = type === "EXERCISE" ? selectedExerciseIds : selectedBoardIds;
     const field = type === "EXERCISE" ? "exerciseIds" : "tacticalBoardIds";
-    if (list.includes(id)) {
-      setValue(
-        field,
-        list.filter((item) => item !== id),
-      );
-    } else {
-      setValue(field, [...list, id]);
-    }
+    setValue(
+      field,
+      list.includes(id) ? list.filter((item) => item !== id) : [...list, id],
+    );
   };
 
   const handleReorder = (
@@ -222,23 +228,13 @@ export default function DirectorNewSessionPage() {
     const list =
       type === "EXERCISE" ? [...selectedExerciseIds] : [...selectedBoardIds];
     const field = type === "EXERCISE" ? "exerciseIds" : "tacticalBoardIds";
-    if (direction === "UP") {
-      if (index === 0) return;
+
+    if (direction === "UP" && index > 0) {
       [list[index - 1], list[index]] = [list[index], list[index - 1]];
-    } else {
-      if (index === list.length - 1) return;
+    } else if (direction === "DOWN" && index < list.length - 1) {
       [list[index + 1], list[index]] = [list[index], list[index + 1]];
     }
     setValue(field, list);
-  };
-
-  const handleRemove = (id: string, type: "EXERCISE" | "BOARD") => {
-    const list = type === "EXERCISE" ? selectedExerciseIds : selectedBoardIds;
-    const field = type === "EXERCISE" ? "exerciseIds" : "tacticalBoardIds";
-    setValue(
-      field,
-      list.filter((item) => item !== id),
-    );
   };
 
   // --- SUBMIT ---
@@ -268,13 +264,13 @@ export default function DirectorNewSessionPage() {
               location: formData.location,
               categoryId: formData.categoryId,
               notes: formData.notes,
-              isHome: true,
+              isHome: true, // ¿Debería ser dinámico en el futuro?
             },
           },
         });
       }
       showAlert("Actividad programada correctamente", "success");
-      router.push("/dashboard/director/calendar"); // Redirigimos al calendario del director
+      router.push("/dashboard/director/calendar");
     } catch (err: any) {
       console.error(err);
       showAlert(err.message || "Error al crear la actividad", "error");
@@ -284,36 +280,37 @@ export default function DirectorNewSessionPage() {
   if (userLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin text-gray-400" />
+        <Loader2 className="animate-spin text-gray-400 w-8 h-8" />
       </div>
     );
   }
 
   const availableExercises = allExercises.filter(
-    (ex) => !selectedExerciseIds.includes(ex.id),
+    (ex: any) => !selectedExerciseIds.includes(ex.id),
   );
   const availableBoards = allBoards.filter(
-    (b) => !selectedBoardIds.includes(b.id),
+    (b: any) => !selectedBoardIds.includes(b.id),
   );
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32 font-sans animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* HEADER DE NAVEGACIÓN */}
-      <div className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-gray-200 px-4 h-16 flex items-center justify-between shadow-sm">
+      {/* HEADER */}
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-gray-200 px-4 h-16 flex items-center justify-between shadow-sm">
         <button
           onClick={() => router.back()}
+          aria-label="Volver atrás"
           className="p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors active:scale-95"
         >
           <ArrowLeft size={24} />
         </button>
         <h1 className="font-bold text-gray-900 text-lg">Programar Actividad</h1>
         <div className="w-10"></div>
-      </div>
+      </header>
 
-      <div className="max-w-2xl mx-auto px-5 pt-6 space-y-6">
-        {/* SELECTOR DE ESCUELA (SOLO DIRECTOR) */}
+      <main className="max-w-2xl mx-auto px-5 pt-6 space-y-6">
+        {/* SELECTOR ESCUELA */}
         {availableSchools.length > 0 && (
-          <div className="bg-white border border-gray-200 shadow-sm rounded-xl px-4 py-3 flex items-center gap-3 w-full mb-2">
+          <div className="bg-white border border-gray-200 shadow-sm rounded-xl px-4 py-3 flex items-center gap-3 w-full">
             <div className="bg-indigo-50 p-2 rounded-lg">
               <School className="w-5 h-5 text-[#312E81]" />
             </div>
@@ -326,7 +323,7 @@ export default function DirectorNewSessionPage() {
                   value={selectedSchoolId}
                   onChange={(e) => {
                     setSelectedSchoolId(e.target.value);
-                    setValue("categoryId", ""); // Resetear categoría al cambiar de escuela
+                    setValue("categoryId", "");
                   }}
                   className="bg-transparent font-bold text-[#312E81] text-base outline-none w-full appearance-none cursor-pointer"
                 >
@@ -343,16 +340,19 @@ export default function DirectorNewSessionPage() {
               )}
             </div>
             {availableSchools.length > 1 && (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
+              <ChevronDown className="w-5 h-5 text-gray-400 pointer-events-none" />
             )}
           </div>
         )}
 
-        {/* SELECTOR DE TIPO (ENTRENAMIENTO O PARTIDO) */}
+        {/* SELECTOR TIPO */}
         <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-gray-200 flex relative">
           <button
             type="button"
-            onClick={() => setSessionType("TRAINING")}
+            onClick={() => {
+              setSessionType("TRAINING");
+              setValue("rivalName", "");
+            }}
             className={`flex-1 py-4 rounded-xl text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all duration-300 ${
               sessionType === "TRAINING"
                 ? "bg-emerald-50 text-[#10B981] ring-1 ring-[#10B981]"
@@ -367,7 +367,10 @@ export default function DirectorNewSessionPage() {
           </button>
           <button
             type="button"
-            onClick={() => setSessionType("MATCH")}
+            onClick={() => {
+              setSessionType("MATCH");
+              setValue("title", "");
+            }}
             className={`flex-1 py-4 rounded-xl text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all duration-300 ${
               sessionType === "MATCH"
                 ? "bg-indigo-50 text-[#312E81] ring-1 ring-[#312E81]"
@@ -381,11 +384,11 @@ export default function DirectorNewSessionPage() {
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           {/* SECCIÓN 1: DATOS BÁSICOS */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
-                Equipo / Categoría
-              </label>
+          <section className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-5">
+            <FormInputWrapper
+              label="Equipo / Categoría"
+              error={errors.categoryId?.message}
+            >
               <div className="relative">
                 <Users
                   className="absolute left-4 top-3.5 text-gray-400"
@@ -393,66 +396,63 @@ export default function DirectorNewSessionPage() {
                 />
                 <select
                   {...register("categoryId", {
-                    required: "Selecciona un equipo",
+                    required: "Debes seleccionar un equipo",
                   })}
                   disabled={loadingCategories}
-                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none appearance-none font-bold text-gray-800 transition-all focus:bg-white focus:ring-2 ${themeBorder} disabled:opacity-60`}
+                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border ${errors.categoryId ? "border-red-300" : "border-gray-200"} rounded-2xl outline-none appearance-none font-bold text-gray-800 transition-all focus:bg-white focus:ring-2 ${themeBorder} disabled:opacity-60`}
                 >
                   <option value="">Seleccionar...</option>
-                  {categories.map((c) => (
+                  {categories.map((c: any) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
-                {errors.categoryId && (
-                  <p className="text-red-500 text-xs mt-1 ml-2">
-                    {errors.categoryId.message}
-                  </p>
-                )}
               </div>
-            </div>
+            </FormInputWrapper>
 
             {sessionType === "TRAINING" ? (
-              <div className="space-y-2 animate-in fade-in">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
-                  Objetivo / Título
-                </label>
+              <FormInputWrapper
+                label="Objetivo / Título"
+                error={errors.title?.message}
+                className="animate-in fade-in"
+              >
                 <input
                   type="text"
                   {...register("title", {
-                    required: sessionType === "TRAINING",
+                    required: "El título es obligatorio",
                   })}
-                  placeholder="Ej: Salida de balón"
-                  className={`w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none font-medium transition-all focus:bg-white focus:ring-2 ${themeBorder}`}
+                  placeholder="Ej: Salida de balón bajo presión"
+                  className={`w-full px-4 py-3.5 bg-gray-50 border ${errors.title ? "border-red-300" : "border-gray-200"} rounded-2xl outline-none font-medium transition-all focus:bg-white focus:ring-2 ${themeBorder}`}
                 />
-              </div>
+              </FormInputWrapper>
             ) : (
-              <div className="space-y-2 animate-in fade-in">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
-                  Rival
-                </label>
+              <FormInputWrapper
+                label="Rival"
+                error={errors.rivalName?.message}
+                className="animate-in fade-in"
+              >
                 <div className="relative">
                   <Swords
-                    className="absolute left-4 top-3.5 text-gray-400"
+                    className="absolute left-4 top-3.5 text-indigo-400"
                     size={20}
                   />
                   <input
                     type="text"
                     {...register("rivalName", {
-                      required: sessionType === "MATCH",
+                      required: "Indica el nombre del rival",
                     })}
                     placeholder="Ej: Colo-Colo"
-                    className={`w-full pl-12 pr-4 py-3.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl outline-none font-bold text-[#312E81] placeholder-indigo-300 transition-all focus:bg-white focus:ring-2 ${themeBorder}`}
+                    className={`w-full pl-12 pr-4 py-3.5 bg-indigo-50/50 border ${errors.rivalName ? "border-red-300" : "border-indigo-100"} rounded-2xl outline-none font-bold text-[#312E81] placeholder-indigo-300 transition-all focus:bg-white focus:ring-2 ${themeBorder}`}
                   />
                 </div>
-              </div>
+              </FormInputWrapper>
             )}
-          </div>
+          </section>
 
-          {/* SECCIÓN 2: PLANIFICACIÓN (SOLO ENTRENAMIENTO) */}
+          {/* SECCIÓN 2: PLANIFICACIÓN */}
           {sessionType === "TRAINING" && (
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
+            <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
               <div className="flex border-b border-gray-100">
                 <button
                   type="button"
@@ -477,43 +477,50 @@ export default function DirectorNewSessionPage() {
                 {planningTab === "EXERCISES" && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-left-4">
                     {selectedExerciseIds.length > 0 && (
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <label className="text-xs font-bold text-emerald-800 uppercase tracking-wider ml-1">
-                          Orden de Ejercicios
+                          Orden de Ejecución
                         </label>
-                        {selectedExerciseIds.map((id, index) => {
-                          const ex = allExercises.find((e) => e.id === id);
-                          if (!ex) return null;
-                          return (
-                            <div
-                              key={id}
-                              className="flex items-center gap-3 bg-emerald-50/30 p-3 rounded-xl border border-emerald-100"
-                            >
-                              <span className="font-bold text-emerald-600 text-sm w-5 text-center">
-                                {index + 1}
-                              </span>
-                              <div className="flex-1">
-                                <p className="font-bold text-gray-800 text-sm">
-                                  {ex.title}
-                                </p>
-                                <DifficultyBadge level={ex.difficulty} />
+                        <div className="space-y-2">
+                          {selectedExerciseIds.map((id, index) => {
+                            const ex = allExercises.find(
+                              (e: any) => e.id === id,
+                            );
+                            if (!ex) return null;
+                            return (
+                              <div
+                                key={id}
+                                className="flex items-center gap-3 bg-emerald-50/30 p-3 rounded-xl border border-emerald-100 animate-in fade-in"
+                              >
+                                <span className="font-bold text-emerald-600 text-sm w-5 text-center">
+                                  {index + 1}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-gray-800 text-sm truncate">
+                                    {ex.title}
+                                  </p>
+                                  <DifficultyBadge level={ex.difficulty} />
+                                </div>
+                                <OrderingControls
+                                  isFirst={index === 0}
+                                  isLast={
+                                    index === selectedExerciseIds.length - 1
+                                  }
+                                  onUp={() =>
+                                    handleReorder(index, "UP", "EXERCISE")
+                                  }
+                                  onDown={() =>
+                                    handleReorder(index, "DOWN", "EXERCISE")
+                                  }
+                                  onRemove={() =>
+                                    handleSelection(id, "EXERCISE")
+                                  }
+                                  accentColor="text-emerald-600 hover:bg-emerald-50"
+                                />
                               </div>
-                              <OrderingControls
-                                isFirst={index === 0}
-                                isLast={
-                                  index === selectedExerciseIds.length - 1
-                                }
-                                onUp={() =>
-                                  handleReorder(index, "UP", "EXERCISE")
-                                }
-                                onDown={() =>
-                                  handleReorder(index, "DOWN", "EXERCISE")
-                                }
-                                onRemove={() => handleRemove(id, "EXERCISE")}
-                              />
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
@@ -526,32 +533,35 @@ export default function DirectorNewSessionPage() {
                           <Loader2 className="animate-spin w-4 h-4 text-emerald-500" />
                         )}
                       </div>
-                      <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto custom-scrollbar pr-1">
-                        {availableExercises.map((ex) => (
+                      <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                        {availableExercises.map((ex: any) => (
                           <div
                             key={ex.id}
                             onClick={() => handleSelection(ex.id, "EXERCISE")}
-                            className="cursor-pointer rounded-xl p-3 border border-gray-100 hover:border-emerald-200 hover:bg-gray-50 transition-all flex items-center justify-between group"
+                            className="cursor-pointer rounded-xl p-3 border border-gray-100 hover:border-emerald-300 hover:bg-emerald-50/30 transition-all flex items-center justify-between group"
                           >
-                            <div className="flex-1">
-                              <h4 className="font-bold text-sm text-gray-700">
+                            <div className="flex-1 min-w-0 pr-3">
+                              <h4 className="font-bold text-sm text-gray-700 truncate">
                                 {ex.title}
                               </h4>
-                              <p className="text-[10px] text-gray-400 truncate">
-                                {ex.objective}
-                              </p>
+                              {ex.objective && (
+                                <p className="text-[10px] text-gray-400 truncate">
+                                  {ex.objective}
+                                </p>
+                              )}
                             </div>
                             <PlusCircle
                               size={20}
-                              className="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="text-emerald-500 opacity-50 group-hover:opacity-100 transition-opacity flex-shrink-0"
                             />
                           </div>
                         ))}
-                        {availableExercises.length === 0 && (
-                          <p className="text-xs text-gray-400 text-center py-4">
-                            No hay más ejercicios disponibles.
-                          </p>
-                        )}
+                        {availableExercises.length === 0 &&
+                          !loadingExercises && (
+                            <div className="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                              Todos los ejercicios han sido seleccionados.
+                            </div>
+                          )}
                       </div>
                     </div>
                   </div>
@@ -570,69 +580,75 @@ export default function DirectorNewSessionPage() {
                     ) : (
                       <>
                         {selectedBoardIds.length > 0 && (
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                             <label className="text-xs font-bold text-indigo-800 uppercase tracking-wider ml-1">
-                              Orden de Pizarras
+                              Revisión Táctica
                             </label>
-                            {selectedBoardIds.map((id, index) => {
-                              const board = allBoards.find((b) => b.id === id);
-                              if (!board) return null;
-                              return (
-                                <div
-                                  key={id}
-                                  className="flex items-center gap-3 bg-indigo-50/30 p-3 rounded-xl border border-indigo-100"
-                                >
-                                  <span className="font-bold text-indigo-600 text-sm w-5 text-center">
-                                    {index + 1}
-                                  </span>
-                                  <div className="flex-1">
-                                    <p className="font-bold text-gray-800 text-sm">
-                                      {board.title}
-                                    </p>
-                                    {board.animation && (
-                                      <span className="text-[9px] bg-red-100 text-red-600 px-1.5 rounded border border-red-200">
-                                        Animada
-                                      </span>
-                                    )}
+                            <div className="space-y-2">
+                              {selectedBoardIds.map((id, index) => {
+                                const board = allBoards.find(
+                                  (b: any) => b.id === id,
+                                );
+                                if (!board) return null;
+                                return (
+                                  <div
+                                    key={id}
+                                    className="flex items-center gap-3 bg-indigo-50/30 p-3 rounded-xl border border-indigo-100 animate-in fade-in"
+                                  >
+                                    <span className="font-bold text-indigo-600 text-sm w-5 text-center">
+                                      {index + 1}
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-bold text-gray-800 text-sm truncate">
+                                        {board.title}
+                                      </p>
+                                      {board.animation && (
+                                        <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">
+                                          ANIMADA
+                                        </span>
+                                      )}
+                                    </div>
+                                    <OrderingControls
+                                      isFirst={index === 0}
+                                      isLast={
+                                        index === selectedBoardIds.length - 1
+                                      }
+                                      onUp={() =>
+                                        handleReorder(index, "UP", "BOARD")
+                                      }
+                                      onDown={() =>
+                                        handleReorder(index, "DOWN", "BOARD")
+                                      }
+                                      onRemove={() =>
+                                        handleSelection(id, "BOARD")
+                                      }
+                                      accentColor="text-indigo-600 hover:bg-indigo-50"
+                                    />
                                   </div>
-                                  <OrderingControls
-                                    isFirst={index === 0}
-                                    isLast={
-                                      index === selectedBoardIds.length - 1
-                                    }
-                                    onUp={() =>
-                                      handleReorder(index, "UP", "BOARD")
-                                    }
-                                    onDown={() =>
-                                      handleReorder(index, "DOWN", "BOARD")
-                                    }
-                                    onRemove={() => handleRemove(id, "BOARD")}
-                                    accentColor="text-indigo-600 hover:bg-indigo-50"
-                                  />
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
 
                         <div>
                           <div className="flex justify-between items-center mb-3 mt-4">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
-                              Mis Pizarras ({availableBoards.length})
+                              Mis Pizarras Disponibles
                             </label>
                             {loadingBoards && (
                               <Loader2 className="animate-spin w-4 h-4 text-indigo-500" />
                             )}
                           </div>
-                          <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                          <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
                             {availableBoards.map((b) => (
                               <div
                                 key={b.id}
                                 onClick={() => handleSelection(b.id, "BOARD")}
-                                className="cursor-pointer rounded-xl p-3 border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/20 transition-all flex items-center justify-between group"
+                                className="cursor-pointer rounded-xl p-3 border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex items-center justify-between group"
                               >
-                                <div className="flex-1">
-                                  <h4 className="font-bold text-sm text-gray-700">
+                                <div className="flex-1 min-w-0 pr-3">
+                                  <h4 className="font-bold text-sm text-gray-700 truncate">
                                     {b.title}
                                   </h4>
                                   {b.description && (
@@ -643,14 +659,15 @@ export default function DirectorNewSessionPage() {
                                 </div>
                                 <PlusCircle
                                   size={20}
-                                  className="text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="text-indigo-500 opacity-50 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                 />
                               </div>
                             ))}
-                            {availableBoards.length === 0 && (
-                              <p className="text-xs text-gray-400 text-center py-4">
-                                No hay pizarras guardadas para esta categoría.
-                              </p>
+                            {availableBoards.length === 0 && !loadingBoards && (
+                              <div className="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                No hay más pizarras guardadas para esta
+                                categoría.
+                              </div>
                             )}
                           </div>
                         </div>
@@ -659,16 +676,13 @@ export default function DirectorNewSessionPage() {
                   </div>
                 )}
               </div>
-            </div>
+            </section>
           )}
 
           {/* SECCIÓN 3: FECHA Y LUGAR */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-6">
+          <section className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-6">
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
-                  Fecha
-                </label>
+              <FormInputWrapper label="Fecha" error={errors.date?.message}>
                 <div className="relative">
                   <Calendar
                     className="absolute left-3.5 top-3.5 text-gray-400 pointer-events-none"
@@ -676,15 +690,13 @@ export default function DirectorNewSessionPage() {
                   />
                   <input
                     type="date"
-                    {...register("date", { required: true })}
-                    className={`w-full pl-10 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm font-bold text-gray-700 focus:bg-white focus:ring-2 ${themeBorder}`}
+                    {...register("date", { required: "Requerido" })}
+                    className={`w-full pl-10 pr-2 py-3 bg-gray-50 border ${errors.date ? "border-red-300" : "border-gray-200"} rounded-xl outline-none text-sm font-bold text-gray-700 focus:bg-white focus:ring-2 ${themeBorder}`}
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
-                  Hora
-                </label>
+              </FormInputWrapper>
+
+              <FormInputWrapper label="Hora" error={errors.time?.message}>
                 <div className="relative">
                   <Clock
                     className="absolute left-3.5 top-3.5 text-gray-400 pointer-events-none"
@@ -692,16 +704,17 @@ export default function DirectorNewSessionPage() {
                   />
                   <input
                     type="time"
-                    {...register("time", { required: true })}
-                    className={`w-full pl-10 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm font-bold text-gray-700 focus:bg-white focus:ring-2 ${themeBorder}`}
+                    {...register("time", { required: "Requerido" })}
+                    className={`w-full pl-10 pr-2 py-3 bg-gray-50 border ${errors.time ? "border-red-300" : "border-gray-200"} rounded-xl outline-none text-sm font-bold text-gray-700 focus:bg-white focus:ring-2 ${themeBorder}`}
                   />
                 </div>
-              </div>
+              </FormInputWrapper>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
-                Ubicación
-              </label>
+
+            <FormInputWrapper
+              label="Ubicación"
+              error={errors.location?.message}
+            >
               <div className="relative">
                 <MapPin
                   className="absolute left-4 top-3.5 text-gray-400"
@@ -709,23 +722,26 @@ export default function DirectorNewSessionPage() {
                 />
                 <input
                   type="text"
-                  {...register("location", { required: true })}
-                  placeholder="Ej: Cancha 2"
-                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none text-sm font-medium transition-all focus:bg-white focus:ring-2 ${themeBorder}`}
+                  {...register("location", {
+                    required: "Indica el recinto o cancha",
+                  })}
+                  placeholder="Ej: Complejo Deportivo - Cancha 1"
+                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border ${errors.location ? "border-red-300" : "border-gray-200"} rounded-2xl outline-none text-sm font-medium transition-all focus:bg-white focus:ring-2 ${themeBorder}`}
                 />
               </div>
-            </div>
-          </div>
+            </FormInputWrapper>
+          </section>
 
-          <div className="h-10"></div>
+          {/* ESPACIADOR PARA SCROLL */}
+          <div className="h-24 lg:h-4"></div>
 
           {/* BOTÓN SUBMIT */}
-          <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-gray-200 lg:static lg:bg-transparent lg:border-none lg:p-0 z-40">
+          <div className="fixed bottom-0 left-0 right-0 p-4 pb-safe bg-white/80 backdrop-blur-md border-t border-gray-200 lg:static lg:bg-transparent lg:border-none lg:p-0 z-40">
             <div className="max-w-2xl mx-auto">
               <button
                 type="submit"
                 disabled={loading}
-                className={`w-full py-4 rounded-2xl text-white font-black text-lg shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all
+                className={`w-full py-4 rounded-2xl text-white font-black text-lg shadow-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all
                             ${themeBg} hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed`}
               >
                 {loading ? (
@@ -742,27 +758,58 @@ export default function DirectorNewSessionPage() {
             </div>
           </div>
         </form>
-      </div>
+      </main>
     </div>
   );
 }
 
 // === COMPONENTES UI AUXILIARES ===
+
+// Nuevo wrapper para estandarizar labels y errores
+function FormInputWrapper({
+  label,
+  error,
+  children,
+  className = "",
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <div className="flex justify-between items-center ml-1">
+        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+          {label}
+        </label>
+        {error && (
+          <span className="text-[10px] text-red-500 font-bold flex items-center gap-1">
+            <AlertCircle size={10} /> {error}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function OrderingControls({
   isFirst,
   isLast,
   onUp,
   onDown,
   onRemove,
-  accentColor = "text-emerald-700",
+  accentColor,
 }: any) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-0.5">
       <button
         type="button"
         onClick={onUp}
         disabled={isFirst}
-        className={`p-1.5 rounded-lg hover:bg-white disabled:opacity-30 ${accentColor}`}
+        aria-label="Mover arriba"
+        className={`p-2 rounded-lg transition-colors disabled:opacity-30 ${accentColor}`}
       >
         <ArrowUp size={16} />
       </button>
@@ -770,7 +817,8 @@ function OrderingControls({
         type="button"
         onClick={onDown}
         disabled={isLast}
-        className={`p-1.5 rounded-lg hover:bg-white disabled:opacity-30 ${accentColor}`}
+        aria-label="Mover abajo"
+        className={`p-2 rounded-lg transition-colors disabled:opacity-30 ${accentColor}`}
       >
         <ArrowDown size={16} />
       </button>
@@ -778,7 +826,8 @@ function OrderingControls({
       <button
         type="button"
         onClick={onRemove}
-        className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors"
+        aria-label="Eliminar"
+        className="p-2 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors"
       >
         <Trash2 size={16} />
       </button>
@@ -792,18 +841,19 @@ function DifficultyBadge({
   level: "BASIC" | "INTERMEDIATE" | "ADVANCED";
 }) {
   const styles = {
-    BASIC: "bg-emerald-100 text-emerald-700",
-    INTERMEDIATE: "bg-amber-100 text-amber-700",
-    ADVANCED: "bg-rose-100 text-rose-700",
+    BASIC: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    INTERMEDIATE: "bg-amber-100 text-amber-700 border-amber-200",
+    ADVANCED: "bg-rose-100 text-rose-700 border-rose-200",
   };
   const labels = {
     BASIC: "Básico",
     INTERMEDIATE: "Intermedio",
     ADVANCED: "Avanzado",
   };
+
   return (
     <span
-      className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${styles[level] || styles.BASIC}`}
+      className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border mt-1 inline-block ${styles[level] || styles.BASIC}`}
     >
       {labels[level] || "General"}
     </span>

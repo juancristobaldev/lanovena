@@ -20,6 +20,15 @@ import {
   Calendar,
   ListCheck,
   Newspaper,
+  BarChart3,
+  Filter,
+  Receipt,
+  Building2,
+  BookOpen,
+  ClipboardCheck,
+  Send,
+  LifeBuoy,
+  UserCog,
 } from "lucide-react";
 
 // Tipos de roles basados en tu Prisma Schema y Docs
@@ -28,19 +37,73 @@ export type UserRole = "SUPERADMIN" | "DIRECTOR" | "COACH" | "GUARDIAN";
 export const MENU_ITEMS = {
   SUPERADMIN: [
     {
-      title: "Panel de Control",
+      title: "Visión General",
       href: "/dashboard/admin",
       icon: LayoutDashboard,
     },
     {
-      title: "Gestión de Escuelas",
-      href: "/dashboard/admin/schools",
-      icon: ShieldCheck,
+      title: "Estadísticas & Data",
+      href: "/dashboard/admin/estadistics",
+      icon: BarChart3,
+    },
+    { title: "Embudo CRM", href: "/dashboard/admin/crm", icon: Filter },
+    {
+      title: "Facturación SII",
+      href: "/dashboard/admin/billing",
+      icon: Receipt,
+    },
+
+    // Clientes (Tenants)
+    {
+      title: "Macro Entidades",
+      href: "/dashboard/admin/clients/institutionals",
+      icon: Building2,
     },
     {
-      title: "Finanzas Globales",
-      href: "/dashboard/admin/finance",
-      icon: CreditCard,
+      title: "Escuelas Base",
+      href: "/dashboard/admin/clients/schools",
+      icon: ShieldCheck,
+    },
+
+    // Medios / Contenidos
+    {
+      title: "Biblioteca Maestra",
+      href: "/dashboard/admin/medias/library",
+      icon: BookOpen,
+    },
+    {
+      title: "Banco de Tests",
+      href: "/dashboard/admin/medias/tests",
+      icon: ClipboardCheck,
+    },
+
+    // Operaciones
+    {
+      title: "Monitor Ligas",
+      href: "/dashboard/admin/operations/leagues",
+      icon: Trophy,
+    },
+    {
+      title: "Avisos (Push)",
+      href: "/dashboard/admin/operations/comunications",
+      icon: Send,
+    },
+    {
+      title: "Soporte Técnico",
+      href: "/dashboard/admin/operations/support",
+      icon: LifeBuoy,
+    },
+
+    // Sistema
+    {
+      title: "Mi Equipo",
+      href: "/dashboard/admin/system/teams",
+      icon: UserCog,
+    },
+    {
+      title: "Ajustes Sistema",
+      href: "/dashboard/admin/system/settings",
+      icon: Settings,
     },
   ],
   DIRECTOR: [

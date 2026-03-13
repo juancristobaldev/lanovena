@@ -1,25 +1,22 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  Plus,
   Search,
-  Edit,
-  School,
-  ChevronDown,
+  Edit2,
   Users,
   Trophy,
   Activity,
   AlertCircle,
+  Loader2,
+  UserPlus,
 } from "lucide-react";
 import { useQuery } from "@apollo/client/react";
 import { gql } from "@apollo/client";
 import { useUser } from "@/src/providers/me";
-import PlayerModal from "@/src/components/PlayerModal";
 
-// === GRAPHQL ===
-export const GET_PLAYERS_BY_SCHOOL = gql`
+const GET_PLAYERS_BY_SCHOOL = gql`
   query PlayersBySchool($schoolId: String!) {
     playersBySchool(schoolId: $schoolId) {
       id
@@ -27,7 +24,6 @@ export const GET_PLAYERS_BY_SCHOOL = gql`
       lastName
       active
       scholarship
-      photoUrl # Asumiendo que existe, sino se usa fallback
       category {
         id
         name
@@ -40,45 +36,33 @@ export const GET_PLAYERS_BY_SCHOOL = gql`
   }
 `;
 
-// === COMPONENTE PRINCIPAL ===
-export default function PlayersPage() {
+export default function PlayersListPage() {
   const { user, loading: userLoading } = useUser();
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // 1. Lógica de Escuelas (Reutilizable)
-  const availableSchools = useMemo(() => {
-    if (!user) return [];
-    // @ts-ignore
-    const schools = user.schools || (user.school ? [user.school] : []);
-    return schools.map((s: any) => s.school || s);
+  // Derivamos la escuela activa del Layout
+  const activeSchoolId = useMemo(() => {
+    if (!user) return null;
+    const schools: any = user.schools || (user.school ? [user.school] : []);
+    return schools[0]?.school?.id || schools[0]?.id || null;
   }, [user]);
 
-  useEffect(() => {
-    if (availableSchools.length > 0 && !selectedSchoolId) {
-      setSelectedSchoolId(availableSchools[0].id);
-    }
-  }, [availableSchools, selectedSchoolId]);
-
-  // 2. Query de Jugadores
-  const { data, loading, refetch }: any = useQuery(GET_PLAYERS_BY_SCHOOL, {
-    variables: { schoolId: selectedSchoolId },
-    skip: !selectedSchoolId,
+  const { data, loading }: any = useQuery(GET_PLAYERS_BY_SCHOOL, {
+    variables: { schoolId: activeSchoolId },
+    skip: !activeSchoolId,
     fetchPolicy: "network-only",
   });
 
   const players = data?.playersBySchool || [];
 
-  // 3. Filtrado y Estadísticas
+  // Filtrado y Estadísticas
   const filteredPlayers = useMemo(() => {
     if (!searchTerm) return players;
+    const term = searchTerm.toLowerCase();
     return players.filter(
       (p: any) =>
-        `${p.firstName} ${p.lastName}`
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase()) ||
-        p.guardian?.fullName.toLowerCase().includes(searchTerm.toLowerCase()),
+        `${p.firstName} ${p.lastName}`.toLowerCase().includes(term) ||
+        p.guardian?.fullName.toLowerCase().includes(term),
     );
   }, [players, searchTerm]);
 
@@ -91,139 +75,86 @@ export default function PlayersPage() {
     [players],
   );
 
-  // --- RENDER ---
-  if (userLoading)
-    return <div className="p-10 text-center text-indigo-900">Cargando...</div>;
-
-  const currentSchool = availableSchools.find(
-    (s: any) => s.id === selectedSchoolId,
-  );
+  if (userLoading || loading) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-[#312E81]" />
+        <p className="text-slate-500 font-medium animate-pulse">
+          Cargando plantilla...
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-8 animate-fade-in">
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-200">
-        <div>
-          <h1 className="text-3xl font-black text-[#111827] tracking-tight mb-2">
-            Plantilla de Jugadores
-          </h1>
-          <p className="text-gray-500 text-lg">
-            Gestión de fichas deportivas, matrículas y estados.
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-          {availableSchools.length > 0 && (
-            <div className="bg-white border border-gray-200 shadow-sm rounded-xl px-3 py-2 flex items-center gap-2 min-w-[200px]">
-              <div className="bg-indigo-50 p-2 rounded-lg">
-                <School className="w-4 h-4 text-[#312E81]" />
-              </div>
-              <div className="relative flex-1">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                  Escuela
-                </span>
-                {availableSchools.length > 1 ? (
-                  <select
-                    value={selectedSchoolId}
-                    onChange={(e) => setSelectedSchoolId(e.target.value)}
-                    className="bg-transparent font-bold text-[#312E81] text-sm outline-none w-full appearance-none cursor-pointer"
-                  >
-                    {availableSchools.map((s: any) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="font-bold text-[#312E81] text-sm block truncate">
-                    {currentSchool?.name}
-                  </span>
-                )}
-              </div>
-              {availableSchools.length > 1 && (
-                <ChevronDown className="w-4 h-4 text-gray-400" />
-              )}
-            </div>
-          )}
-
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 bg-[#10B981] hover:bg-emerald-600 text-white px-5 py-3 rounded-xl font-bold shadow-lg shadow-emerald-900/10 transition-all active:scale-95"
-          >
-            <Plus strokeWidth={3} className="w-5 h-5" />
-            <span className="hidden sm:inline">Matricular Jugador</span>
-            <span className="sm:hidden">Nuevo</span>
-          </button>
-        </div>
-      </div>
-
-      {/* KPI CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="space-y-8 animate-fade-in">
+      {/* 1. KPI CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
           icon={Users}
           label="Total Jugadores"
           value={stats.total}
-          color="bg-indigo-50 text-indigo-700"
+          colorClass="bg-indigo-50 text-[#312E81] border-indigo-100"
         />
         <StatCard
           icon={Activity}
           label="Activos"
           value={stats.active}
-          color="bg-emerald-50 text-emerald-700"
+          colorClass="bg-emerald-50 text-[#10B981] border-emerald-100"
         />
         <StatCard
           icon={Trophy}
           label="Becados"
           value={stats.scholarships}
-          color="bg-amber-50 text-amber-700"
+          colorClass="bg-amber-50 text-amber-600 border-amber-100"
         />
       </div>
 
-      {/* CONTROLES Y TABLA */}
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-        {/* Barra de Búsqueda */}
-        <div className="p-4 border-b border-gray-100 flex gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+      {/* 2. TABLA DE JUGADORES */}
+      <div className="bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden flex flex-col">
+        {/* Barra de Búsqueda Integrada */}
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+          <div className="relative max-w-md">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Buscar por nombre o apoderado..."
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#312E81] outline-none"
+              placeholder="Buscar por alumno o apoderado..."
+              className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none transition-all shadow-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
 
-        {/* Tabla */}
+        {/* Contenedor de Tabla */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50/50 text-gray-500 font-semibold border-b border-gray-100 uppercase text-xs tracking-wider">
+          <table className="w-full text-sm text-left whitespace-nowrap">
+            <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-widest text-[10px] border-b border-slate-100">
               <tr>
-                <th className="px-6 py-4">Jugador</th>
-                <th className="px-6 py-4">Categoría</th>
-                <th className="px-6 py-4">Apoderado</th>
-                <th className="px-6 py-4">Estado</th>
-                <th className="px-6 py-4 text-right">Acciones</th>
+                <th className="px-8 py-5 rounded-tl-[2rem]">Jugador</th>
+                <th className="px-6 py-5">Categoría</th>
+                <th className="px-6 py-5">Familia Responsable</th>
+                <th className="px-6 py-5">Estado</th>
+                <th className="px-8 py-5 text-right rounded-tr-[2rem]">
+                  Acciones
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {loading ? (
+            <tbody className="divide-y divide-slate-100">
+              {filteredPlayers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-10 text-center text-gray-400">
-                    Cargando plantilla...
-                  </td>
-                </tr>
-              ) : filteredPlayers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-10 text-center">
+                  <td colSpan={5} className="py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
-                      <Users className="w-10 h-10 text-gray-200 mb-2" />
-                      <p className="text-gray-500 font-medium">
-                        No se encontraron jugadores
+                      <div className="bg-slate-50 p-5 rounded-2xl mb-4 border border-slate-100">
+                        <UserPlus size={32} className="text-slate-400" />
+                      </div>
+                      <p className="text-slate-900 font-bold text-lg mb-1">
+                        {searchTerm ? "Sin coincidencias" : "Plantilla vacía"}
                       </p>
-                      <p className="text-gray-400 text-xs">
-                        Intenta ajustar los filtros o registra uno nuevo.
+                      <p className="text-slate-500 font-medium">
+                        {searchTerm
+                          ? "Intenta con otro nombre."
+                          : "Comienza matriculando a tu primer alumno."}
                       </p>
                     </div>
                   </td>
@@ -232,67 +163,65 @@ export default function PlayersPage() {
                 filteredPlayers.map((player: any) => (
                   <tr
                     key={player.id}
-                    className="hover:bg-gray-50/80 transition-colors group"
+                    className="hover:bg-slate-50/80 transition-colors group"
                   >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        {/* Avatar / Iniciales */}
-                        <div className="w-9 h-9 rounded-full bg-indigo-100 text-[#312E81] flex items-center justify-center font-bold text-xs border border-indigo-200">
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-[#312E81] flex items-center justify-center font-black text-sm border border-indigo-100 shadow-sm group-hover:scale-105 transition-transform">
                           {player.firstName.charAt(0)}
                           {player.lastName.charAt(0)}
                         </div>
                         <div>
-                          <div className="font-bold text-gray-900 flex items-center gap-2">
+                          <div className="font-bold text-slate-900 flex items-center gap-2 text-base">
                             {player.firstName} {player.lastName}
                             {player.scholarship && (
                               <span
-                                className="text-[10px] bg-amber-100 text-amber-700 px-1.5 rounded border border-amber-200"
-                                title="Becado"
+                                className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black tracking-wider border border-amber-200"
+                                title="100% Becado"
                               >
-                                ⭐
+                                BECA
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                    <td className="px-6 py-5">
+                      <span className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
                         {player.category?.name || "Sin Categoría"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-5">
                       {player.guardian ? (
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span className="text-slate-600 font-medium">
                           {player.guardian.fullName}
                         </span>
                       ) : (
-                        <span className="text-gray-400 italic text-xs flex items-center gap-1">
-                          <AlertCircle size={12} /> Sin asignar
+                        <span className="text-slate-400 italic text-xs font-medium flex items-center gap-1.5 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100 w-fit">
+                          <AlertCircle size={14} /> Sin apoderado
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-5">
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border ${
                           player.active
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                            : "bg-red-50 text-red-700 border border-red-100"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-red-50 text-red-700 border-red-200"
                         }`}
                       >
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${player.active ? "bg-emerald-500" : "bg-red-500"}`}
+                          className={`w-2 h-2 rounded-full ${player.active ? "bg-[#10B981]" : "bg-red-500"}`}
                         ></span>
                         {player.active ? "Activo" : "Inactivo"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-8 py-5 text-right">
                       <Link
-                        href={`/dashboard/director/players/${player.id}`}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-[#312E81] hover:bg-indigo-50 transition-colors"
+                        href={`/dashboard/director/players/${player.id}/edit`}
+                        className="inline-flex items-center justify-center p-2.5 rounded-xl text-slate-400 hover:text-[#312E81] hover:bg-indigo-50 transition-colors border border-transparent hover:border-indigo-100"
                       >
-                        <Edit size={16} />
+                        <Edit2 size={18} />
                       </Link>
                     </td>
                   </tr>
@@ -302,30 +231,26 @@ export default function PlayersPage() {
           </table>
         </div>
       </div>
-
-      {/* MODAL */}
-      <PlayerModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        schoolId={selectedSchoolId}
-        onSuccess={() => refetch()}
-      />
     </div>
   );
 }
 
-// Subcomponente simple para KPIs
-function StatCard({ icon: Icon, label, value, color }: any) {
+// Componente para las tarjetas de estadísticas
+function StatCard({ icon: Icon, label, value, colorClass }: any) {
   return (
-    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
-      <div className={`p-3 rounded-lg ${color}`}>
-        <Icon size={20} />
+    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-center gap-5 hover:shadow-md transition-shadow">
+      <div
+        className={`w-14 h-14 rounded-2xl flex items-center justify-center border ${colorClass}`}
+      >
+        <Icon size={24} strokeWidth={2.5} />
       </div>
       <div>
-        <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">
+        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">
           {label}
         </p>
-        <p className="text-2xl font-black text-gray-900">{value}</p>
+        <p className="text-3xl font-black text-slate-900 leading-none">
+          {value}
+        </p>
       </div>
     </div>
   );

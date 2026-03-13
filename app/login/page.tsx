@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { useMutation } from "@apollo/client/react";
 import { gql } from "@apollo/client";
 import Cookies from "js-cookie";
 
-// Importamos los iconos de Lucide React
 import {
   Mail,
   Lock,
@@ -16,9 +16,9 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  ShieldCheck,
 } from "lucide-react";
 
-// --- GRAPHQL ---
 const LOGIN_MUTATION = gql`
   mutation Login($input: LoginInput!) {
     login(input: $input) {
@@ -37,13 +37,11 @@ const LOGIN_MUTATION = gql`
 export default function LoginPage() {
   const router = useRouter();
 
-  // Estados
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-  // Apollo Hook
   const [login, { loading }] = useMutation(LOGIN_MUTATION);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -57,142 +55,165 @@ export default function LoginPage() {
 
       const { accessToken, user } = data?.login;
 
-      // Guardar sesión
       Cookies.set("token", accessToken, { expires: 7 });
       Cookies.set("userRole", user.role);
 
-      // Redirección por Rol
       if (user.role === "SUPERADMIN") {
         router.push("/admin/dashboard");
-      } else if (!user.schoolId && !user.schools) {
-        router.push("/onboarding");
+      } else if (user.role === "DIRECTOR") {
+        router.push("/dashboard/director");
       } else {
         router.push("/dashboard/director");
       }
     } catch (err: any) {
       console.error(err);
-      setError("Credenciales incorrectas. Por favor intenta nuevamente.");
+      setError(
+        "Credenciales incorrectas. Por favor verifica tu correo y contraseña.",
+      );
     }
   };
 
   return (
-    <div className="min-h-screen flex w-full bg-white font-sans text-gray-900">
-      {/* 1. SECCIÓN IZQUIERDA (Branding & Identidad) */}
-      <div className="hidden lg:flex w-1/2 bg-[#312E81] relative overflow-hidden flex-col justify-between p-16 text-white">
-        {/* Patrón de Fondo sutil */}
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
-            backgroundSize: "40px 40px",
-          }}
-        ></div>
+    <div className="min-h-screen flex w-full bg-slate-50 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
+      {/* 1. SECCIÓN IZQUIERDA (Inmersión de Marca - Heredado de la Landing) */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-[#0F172A] overflow-hidden flex-col justify-between p-12 xl:p-20 text-white">
+        {/* Decoración Gradiente */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-[#312E81] rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-pulse"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#10B981] rounded-full mix-blend-multiply filter blur-[100px] opacity-30"></div>
 
-        {/* Decoración Gradiente (Efecto 'Glow') */}
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#4338CA] rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/2"></div>
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#10B981] rounded-full blur-3xl opacity-20 translate-y-1/2 -translate-x-1/2"></div>
+        {/* Imagen de fondo sutil (Opcional, mejora la inmersión) */}
+        <div className="absolute inset-0 opacity-20">
+          <img
+            src="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=1200&auto=format&fit=crop"
+            alt="Fondo Fútbol"
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-[#0F172A]/80 to-transparent"></div>
+        </div>
 
-        {/* Logo */}
-        <div className="relative z-10">
-          <h2 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            IX <span className="text-[#10B981]">LA NOVENA</span>
-          </h2>
+        {/* Header / Logo */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-12 h-12 bg-[#312E81] rounded-xl flex items-center justify-center shadow-lg border border-indigo-500/30">
+            <span className="font-black text-2xl italic text-[#10B981]">
+              IX
+            </span>
+          </div>
+          <span className="font-black text-2xl tracking-tight text-white">
+            La Novena
+          </span>
         </div>
 
         {/* Mensaje de Valor */}
-        <div className="relative z-10 max-w-lg">
-          <blockquote className="text-2xl font-medium leading-relaxed mb-6">
-            "La plataforma que profesionaliza el fútbol formativo en el sur de
-            Chile."
-          </blockquote>
-          <div className="flex items-center gap-4">
-            <div className="h-1 w-12 bg-[#10B981] rounded-full"></div>
-            <p className="text-indigo-200 text-sm">
-              Gestión · Pagos · Rendimiento
-            </p>
+        <div className="relative z-10 max-w-lg mb-10 xl:mb-20">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-[#10B981] text-xs font-bold uppercase tracking-wide mb-6 backdrop-blur-md">
+            <ShieldCheck size={16} /> Acceso Seguro
           </div>
+          <h2 className="text-4xl xl:text-5xl font-black leading-tight mb-6">
+            El centro de control de tu{" "}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10B981] to-emerald-300">
+              escuela.
+            </span>
+          </h2>
+          <p className="text-lg text-slate-300 font-medium leading-relaxed">
+            Ingresa a tu panel para gestionar pagos, actualizar asistencias y
+            conectar con la comunidad de tu club en tiempo real.
+          </p>
         </div>
 
         {/* Footer legal */}
-        <div className="relative z-10 text-indigo-300 text-xs">
-          © {new Date().getFullYear()} La Novena SaaS. Todos los derechos
-          reservados.
+        <div className="relative z-10 text-slate-500 text-sm font-medium">
+          © {new Date().getFullYear()} Tecnologías Deportivas La Novena SpA.
         </div>
       </div>
 
-      {/* 2. SECCIÓN DERECHA (Formulario) */}
-      <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-24 bg-gray-50 lg:bg-white">
-        <div className="w-full max-w-sm space-y-8">
-          {/* Header Móvil (Logo visible solo en móvil) */}
-          <div className="lg:hidden text-center mb-8">
-            <h2 className="text-3xl font-extrabold text-[#312E81]">
-              IX LA NOVENA
-            </h2>
+      {/* 2. SECCIÓN DERECHA (Formulario de Login) */}
+      <div className="flex-1 flex flex-col justify-center px-4 sm:px-12 lg:px-20 xl:px-32 bg-white relative">
+        {/* Elemento decorativo móvil */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full blur-3xl opacity-50 lg:hidden -z-10"></div>
+
+        <div className="w-full max-w-[420px] mx-auto space-y-8">
+          {/* Header Móvil */}
+          <div className="lg:hidden flex items-center gap-3 mb-10">
+            <div className="w-10 h-10 bg-[#312E81] rounded-xl flex items-center justify-center shadow-lg">
+              <span className="font-black text-xl italic text-[#10B981]">
+                IX
+              </span>
+            </div>
+            <span className="font-black text-xl tracking-tight text-slate-900">
+              La Novena
+            </span>
           </div>
 
-          {/* Título Formulario */}
-          <div className="text-center lg:text-left">
-            <h1 className="text-2xl font-bold tracking-tight text-[#111827]">
-              ¡Bienvenido de vuelta!
+          <div className="space-y-2">
+            <h1 className="text-3xl font-black tracking-tight text-slate-900">
+              Iniciar Sesión
             </h1>
-            <p className="text-sm text-gray-500 mt-2">
-              Ingresa tus credenciales para acceder al panel.
+            <p className="text-base text-slate-500 font-medium">
+              Ingresa tus credenciales para acceder al sistema operativo.
             </p>
           </div>
 
-          {/* Formulario */}
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-6">
             {/* Input Email */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700 ml-1">
+            <div className="space-y-2">
+              <label
+                htmlFor="email"
+                className="block text-sm font-bold text-slate-700"
+              >
                 Correo Electrónico
               </label>
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-[#312E81] transition-colors">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-[#312E81] transition-colors">
                   <Mail size={20} />
                 </div>
                 <input
+                  id="email"
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#312E81] focus:border-transparent transition-all shadow-sm"
+                  className="block w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] transition-all"
                   placeholder="director@escuela.cl"
                 />
               </div>
             </div>
 
             {/* Input Password */}
-            <div className="space-y-1">
-              <div className="flex justify-between items-center ml-1">
-                <label className="text-sm font-medium text-gray-700">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-bold text-slate-700"
+                >
                   Contraseña
                 </label>
                 <Link
                   href="/auth/recovery"
-                  className="text-xs font-medium text-[#312E81] hover:text-[#10B981] transition-colors"
+                  className="text-sm font-bold text-[#312E81] hover:text-[#10B981] transition-colors"
                 >
                   ¿Olvidaste tu contraseña?
                 </Link>
               </div>
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-[#312E81] transition-colors">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-[#312E81] transition-colors">
                   <Lock size={20} />
                 </div>
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#312E81] focus:border-transparent transition-all shadow-sm"
+                  className="block w-full pl-11 pr-12 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] transition-all"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors focus:outline-none"
-                  tabIndex={-1} // Evita que el tabulador se detenga en el ojo antes del submit
+                  aria-label={
+                    showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
+                  }
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 transition-colors focus:outline-none focus:text-[#312E81]"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -201,12 +222,12 @@ export default function LoginPage() {
 
             {/* Mensaje de Error */}
             {error && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-100 flex items-start gap-3 animate-pulse">
+              <div className="p-4 rounded-xl bg-red-50 border border-red-100 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
                 <AlertCircle
                   size={20}
-                  className="text-red-500 mt-0.5 flex-shrink-0"
+                  className="text-red-600 mt-0.5 flex-shrink-0"
                 />
-                <p className="text-sm text-red-600 font-medium">{error}</p>
+                <p className="text-sm text-red-700 font-medium">{error}</p>
               </div>
             )}
 
@@ -214,31 +235,31 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center items-center py-3 px-4 rounded-xl text-white bg-[#312E81] hover:bg-[#282566] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#312E81] font-bold shadow-lg shadow-indigo-900/20 transition-all transform active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
+              className="w-full flex justify-center items-center py-4 px-4 rounded-xl text-white bg-[#312E81] hover:bg-[#282566] focus:outline-none focus:ring-4 focus:ring-[#312E81]/30 font-black tracking-wide shadow-lg shadow-indigo-900/20 transition-all transform active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 mt-2"
             >
               {loading ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 size={20} className="animate-spin" />
-                  <span>Validando...</span>
+                <div className="flex items-center gap-3">
+                  <Loader2 size={22} className="animate-spin" />
+                  <span>Autenticando...</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <span>Ingresar al Portal</span>
-                  <ArrowRight size={18} strokeWidth={2.5} />
+                <div className="flex items-center gap-3">
+                  <span>Ingresar a mi panel</span>
+                  <ArrowRight size={20} strokeWidth={2.5} />
                 </div>
               )}
             </button>
           </form>
 
           {/* Footer Registro */}
-          <div className="mt-8 text-center">
-            <p className="text-sm text-gray-500">
-              ¿Quieres usar La Novena en tu escuela?{" "}
+          <div className="pt-6 text-center border-t border-slate-100">
+            <p className="text-base text-slate-500 font-medium">
+              ¿Tu escuela aún no usa La Novena?{" "}
               <Link
                 href="/register"
-                className="font-semibold text-[#10B981] hover:text-[#059669] transition-colors"
+                className="font-black text-[#10B981] hover:text-emerald-600 transition-colors ml-1"
               >
-                Solicita una demo
+                Crea una cuenta
               </Link>
             </p>
           </div>
