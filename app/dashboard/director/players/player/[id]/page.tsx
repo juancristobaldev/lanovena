@@ -1,8 +1,8 @@
 "use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import React, { useEffect } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   ArrowLeft,
   Save,
@@ -11,19 +11,54 @@ import {
   CreditCard,
   TrendingUp,
   AlertTriangle,
-  CheckCircle2,
   CalendarClock,
-  Phone,
-  Mail,
   ShieldCheck,
   Stethoscope,
   Loader2,
   User,
   Trophy,
+  Lock,
+  Target,
+  UserCog,
+  Pencil,
+  X,
 } from "lucide-react";
 import { gql } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { useAlert } from "@/src/providers/alert";
+import { useUser } from "@/src/providers/me";
+
+// === CONSTANTES ===
+const POSITIONS = [
+  {
+    id: "GK",
+    label: "GK",
+    full: "Arquero",
+    color: "bg-amber-500",
+    text: "text-amber-600",
+  },
+  {
+    id: "DEF",
+    label: "DEF",
+    full: "Defensa",
+    color: "bg-blue-600",
+    text: "text-blue-700",
+  },
+  {
+    id: "MID",
+    label: "MID",
+    full: "Medio",
+    color: "bg-[#10B981]",
+    text: "text-[#10B981]",
+  },
+  {
+    id: "FW",
+    label: "FW",
+    full: "Delantero",
+    color: "bg-red-600",
+    text: "text-red-700",
+  },
+];
 
 // === GRAPHQL ===
 const GET_PLAYER_DETAILS = gql`
@@ -38,10 +73,13 @@ const GET_PLAYER_DETAILS = gql`
       active
       scholarship
       qrCodeToken
+      position
       category {
+        id
         name
       }
       guardian {
+        id
         fullName
         email
         phone
@@ -59,13 +97,25 @@ const GET_PLAYER_DETAILS = gql`
   }
 `;
 
+const GET_GUARDIANS = gql`
+  query GetGuardians($schoolId: String!) {
+    usersByRole(role: GUARDIAN, schoolId: $schoolId) {
+      id
+      fullName
+    }
+  }
+`;
+
 const UPDATE_PLAYER = gql`
   mutation UpdatePlayer($playerId: String!, $input: UpdatePlayerInput!) {
     updatePlayer(playerId: $playerId, input: $input) {
       id
+      firstName
+      lastName
       active
       scholarship
       medicalInfo
+      position
     }
   }
 `;
@@ -74,28 +124,69 @@ export default function PlayerDetailPage() {
   const router = useRouter();
   const params = useParams();
   const { showAlert } = useAlert();
+  const { user } = useUser();
   const playerId = params.id as string;
 
-  const { register, handleSubmit, watch, setValue } = useForm();
-  const isActive = watch("active");
-  const isScholarship = watch("scholarship");
+  // --- ESTADOS DE UI ---
+  const [isEditMode, setIsEditMode] = useState(false);
 
-  // --- QUERY ---
-  const { data, loading, error }: any = useQuery(GET_PLAYER_DETAILS, {
+  const activeSchoolId = useMemo(() => {
+    if (!user) return null;
+    const schools: any = user.schools || (user.school ? [user.school] : []);
+    return schools[0]?.school?.id || schools[0]?.id || null;
+  }, [user]);
+
+  // --- FORMS & STATE ---
+  const { register, handleSubmit, reset, control } = useForm();
+  const isActive = useWatch({ control, name: "active", defaultValue: true });
+  const isScholarship = useWatch({
+    control,
+    name: "scholarship",
+    defaultValue: false,
+  });
+
+  // --- QUERIES ---
+  const {
+    data: playerData,
+    loading: loadingPlayer,
+    error,
+  }: any = useQuery(GET_PLAYER_DETAILS, {
     variables: { playerId },
     fetchPolicy: "network-only",
   });
 
+  const { data: guardiansData }: any = useQuery(GET_GUARDIANS, {
+    variables: { schoolId: activeSchoolId },
+    skip: !activeSchoolId,
+  });
+
   const [updatePlayer, { loading: saving }] = useMutation(UPDATE_PLAYER);
 
-  // Sync Form
-  useEffect(() => {
-    if (data?.playerProfile) {
-      setValue("medicalInfo", data.playerProfile.medicalInfo);
-      setValue("active", data.playerProfile.active);
-      setValue("scholarship", data.playerProfile.scholarship);
+  // Sync Form Data / Reset
+  const populateForm = () => {
+    if (playerData?.playerProfile) {
+      const p = playerData.playerProfile;
+      reset({
+        firstName: p.firstName,
+        lastName: p.lastName,
+        position: p.position || "MID",
+        guardianId: p.guardian?.id || "",
+        medicalInfo: p.medicalInfo || "",
+        active: p.active ?? true,
+        scholarship: p.scholarship ?? false,
+      });
     }
-  }, [data, setValue]);
+  };
+
+  useEffect(() => {
+    populateForm();
+  }, [playerData]);
+
+  // --- MANEJADORES ---
+  const handleCancelEdit = () => {
+    populateForm(); // Restaura los datos originales
+    setIsEditMode(false);
+  };
 
   const onSubmit = async (formData: any) => {
     try {
@@ -103,50 +194,53 @@ export default function PlayerDetailPage() {
         variables: {
           playerId,
           input: {
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            position: formData.position,
+            guardianId: formData.guardianId,
             medicalInfo: formData.medicalInfo,
             active: formData.active,
             scholarship: formData.scholarship,
           },
         },
       });
-      showAlert("Ficha del jugador actualizada", "success");
-    } catch (err) {
-      console.error(err);
-      showAlert("Error al guardar cambios", "error");
+      showAlert("Expediente actualizado con éxito", "success");
+      setIsEditMode(false); // Salir del modo edición al guardar
+    } catch (err: any) {
+      showAlert(err.message || "Error al guardar cambios", "error");
     }
   };
 
-  // Loading States
-  if (loading)
+  // --- LOADING / ERROR STATES ---
+  if (loadingPlayer)
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-[#312E81]" />
-        <p className="text-gray-500 font-medium animate-pulse">
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[#F8FAFC]">
+        <Loader2 className="w-12 h-12 animate-spin text-[#312E81]" />
+        <p className="text-slate-500 font-black uppercase tracking-widest text-xs animate-pulse">
           Cargando expediente...
         </p>
       </div>
     );
 
-  if (error || !data?.playerProfile)
+  if (error || !playerData?.playerProfile)
     return (
       <div className="p-10 flex flex-col items-center text-center">
-        <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
-        <h3 className="text-lg font-bold text-gray-900">
-          Error al cargar jugador
+        <AlertTriangle className="w-16 h-16 text-red-400 mb-4" />
+        <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+          Ficha no encontrada
         </h3>
         <button
           onClick={() => router.back()}
-          className="mt-4 text-[#312E81] font-bold hover:underline"
+          className="mt-6 px-6 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-[#312E81] transition-colors"
         >
           Volver atrás
         </button>
       </div>
     );
 
-  const player = data.playerProfile;
+  const player = playerData.playerProfile;
 
   // --- LÓGICA VISUAL ---
-  // Asistencia Radial
   const attendanceRate = player.stats?.attendanceRate || 0;
   const lastAttendanceDate = player.stats?.lastAttendance
     ? new Date(player.stats.lastAttendance).toLocaleDateString("es-CL", {
@@ -154,48 +248,85 @@ export default function PlayerDetailPage() {
         month: "long",
       })
     : "Sin registros";
-
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset =
     circumference - (attendanceRate / 100) * circumference;
 
-  // Finanzas
   const financeStatus = player.financialStatus?.status || "PENDING";
   const isOverdue = financeStatus === "OVERDUE";
   const debtAmount = player.financialStatus?.debtAmount || 0;
 
-  // Edad
-  const age =
-    new Date().getFullYear() - new Date(player.birthDate).getFullYear();
+  const birthYear = new Date(player.birthDate).getFullYear();
+  const age = new Date().getFullYear() - birthYear;
+
+  // Condiciones de edición
+  const canEditMainDetails = isEditMode && isActive;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-20 animate-fade-in">
-      {/* 1. TOP NAV */}
-      <div className="flex items-center justify-between">
+    <div className="max-w-6xl mx-auto space-y-8 pb-20 animate-fade-in pt-4 px-4 lg:px-0">
+      {/* 1. TOP NAV & ACTIONS */}
+      <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-sm sticky top-4 z-20">
         <button
           onClick={() => router.back()}
-          className="group flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-[#312E81] transition-colors bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm hover:shadow-md"
+          className="group flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-[#312E81] transition-colors px-3 py-2 rounded-xl hover:bg-slate-50"
         >
           <ArrowLeft
             size={16}
             className="group-hover:-translate-x-1 transition-transform"
           />
-          Volver
+          <span className="hidden sm:inline">Volver</span>
         </button>
-        <div className="flex items-center gap-2 text-xs font-medium text-gray-400">
-          <span>Ficha ID:</span>
-          <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">
-            {player.id.split("-")[0]}...
-          </span>
+
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mr-4 border-r border-slate-200 pr-4">
+            <span>ID:</span>
+            <span className="font-mono bg-slate-100 px-2 py-1 rounded-md text-slate-600">
+              {player.id.split("-")[0]}
+            </span>
+          </div>
+
+          {!isEditMode ? (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                setIsEditMode(true);
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#312E81] text-white rounded-xl font-bold text-sm hover:bg-slate-900 transition-colors shadow-lg shadow-indigo-900/20 active:scale-95"
+            >
+              <Pencil size={16} /> Editar Ficha
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 animate-fade-in">
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors"
+              >
+                <X size={16} />{" "}
+                <span className="hidden sm:inline">Cancelar</span>
+              </button>
+              <button
+                onClick={handleSubmit(onSubmit)}
+                disabled={saving}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl font-bold text-sm hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-900/20 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {saving ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Save size={16} />
+                )}
+                <span className="hidden sm:inline">Guardar</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 2. HERO CARD (Perfil) */}
-      <div className="relative bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-        {/* Background Banner */}
+      {/* 2. HERO CARD (Banner + Avatar) */}
+      <div className="relative bg-white rounded-[2.5rem] shadow-xl overflow-hidden border border-slate-100">
         <div
-          className={`h-32 w-full ${isActive ? "bg-gradient-to-r from-[#312E81] to-[#4F46E5]" : "bg-gray-200"}`}
+          className={`h-32 w-full transition-colors duration-500 ${isActive ? "bg-gradient-to-r from-[#312E81] to-[#4F46E5]" : "bg-slate-300"}`}
         >
           <div className="absolute top-0 right-0 p-6 opacity-10">
             <ShieldCheck size={120} className="text-white" />
@@ -203,9 +334,8 @@ export default function PlayerDetailPage() {
         </div>
 
         <div className="px-8 pb-8 flex flex-col md:flex-row items-center md:items-end -mt-12 gap-6 relative z-10">
-          {/* Avatar */}
           <div
-            className={`w-32 h-32 rounded-full border-4 border-white shadow-lg bg-gray-50 flex items-center justify-center overflow-hidden shrink-0 ${!isActive && "grayscale"}`}
+            className={`w-32 h-32 rounded-3xl border-4 border-white shadow-lg bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 transition-all duration-500 ${!isActive && "grayscale opacity-80"}`}
           >
             {player.photoUrl ? (
               <img
@@ -214,117 +344,130 @@ export default function PlayerDetailPage() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-3xl font-bold text-gray-300 flex flex-col items-center">
+              <span className="text-3xl font-bold text-slate-300 flex flex-col items-center">
                 <User size={40} />
               </span>
             )}
           </div>
 
-          {/* Info Principal */}
           <div className="flex-1 text-center md:text-left mb-2">
             <div className="flex flex-col md:flex-row items-center gap-3 mb-1">
               <h1
-                className={`text-3xl font-black ${isActive ? "text-gray-900" : "text-gray-400"}`}
+                className={`text-3xl font-black tracking-tight transition-colors ${isActive ? "text-slate-900" : "text-slate-400"}`}
               >
                 {player.firstName} {player.lastName}
               </h1>
-              {/* Badges */}
               <div className="flex gap-2">
                 {!isActive && (
-                  <span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-200">
-                    INACTIVO
+                  <span className="bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-slate-200">
+                    Inactivo
                   </span>
                 )}
                 {isScholarship && (
-                  <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200 shadow-sm">
-                    <Trophy size={10} /> BECADO
+                  <span className="bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full flex items-center gap-1 border border-amber-200 shadow-sm">
+                    <Trophy size={10} /> Becado
                   </span>
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap justify-center md:justify-start gap-x-6 gap-y-2 text-sm text-gray-500 font-medium">
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck size={14} className="text-indigo-500" />{" "}
+            <div className="flex flex-wrap justify-center md:justify-start gap-x-6 gap-y-2 text-sm text-slate-500 font-medium mt-2">
+              <span className="flex items-center gap-1.5 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
+                <ShieldCheck size={16} className="text-[#312E81]" />{" "}
                 {player.category.name}
               </span>
-              <span className="flex items-center gap-1.5">
-                <CalendarClock size={14} className="text-emerald-500" /> {age}{" "}
-                Años ({new Date(player.birthDate).getFullYear()})
+              <span className="flex items-center gap-1.5 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
+                <CalendarClock size={16} className="text-[#10B981]" /> {age}{" "}
+                Años
               </span>
             </div>
           </div>
 
-          {/* QR Action */}
-          <button className="bg-white hover:bg-gray-50 text-[#312E81] border border-gray-200 px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 shadow-sm transition-all active:scale-95 mb-2 md:mb-0">
+          <button className="bg-white hover:bg-slate-50 text-[#312E81] border border-slate-200 px-5 py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center gap-2 shadow-sm transition-all active:scale-95 mb-2 md:mb-0">
             <QrCode size={18} />
             <span className="hidden sm:inline">Ver Credencial</span>
           </button>
         </div>
       </div>
 
+      {/* 3. FORMULARIO PRINCIPAL */}
       <form
         onSubmit={handleSubmit(onSubmit)}
         className="grid grid-cols-1 lg:grid-cols-3 gap-8"
       >
         {/* === COLUMNA IZQUIERDA (STATUS & METRICS) === */}
         <div className="space-y-6">
-          {/* 1. PANEL DE ESTADO */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <Activity size={14} /> Estado & Permisos
+          {/* Panel de Permisos (Bloqueado si no es Modo Edición) */}
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative overflow-hidden">
+            {!isEditMode && (
+              <div
+                className="absolute inset-0 z-10 bg-white/40 cursor-not-allowed"
+                title="Presiona Editar Ficha para modificar"
+              ></div>
+            )}
+
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+              <Activity size={16} className="text-[#312E81]" /> Control de
+              Estado
             </h3>
 
             <div className="space-y-4">
-              {/* Switch Activo */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
+              <div
+                className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${isEditMode ? "bg-slate-50 border-slate-200" : "bg-transparent border-slate-100"}`}
+              >
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold text-gray-700">
+                  <span className="text-sm font-bold text-slate-700">
                     Estado Jugador
                   </span>
-                  <span className="text-[10px] text-gray-500">
-                    Habilita acceso a la cancha
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Habilita acceso a plataforma
                   </span>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label
+                  className={`relative inline-flex items-center ${isEditMode ? "cursor-pointer" : "cursor-not-allowed"}`}
+                >
                   <input
                     type="checkbox"
                     {...register("active")}
+                    disabled={!isEditMode}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10B981]"></div>
+                  <div className="w-12 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#10B981] shadow-inner peer-disabled:opacity-70"></div>
                 </label>
               </div>
 
-              {/* Switch Beca */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
+              <div
+                className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${isEditMode ? "bg-slate-50 border-slate-200" : "bg-transparent border-slate-100"} ${!isActive && isEditMode && "opacity-50 pointer-events-none"}`}
+              >
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold text-gray-700">
+                  <span className="text-sm font-bold text-slate-700">
                     Beca Deportiva
                   </span>
-                  <span className="text-[10px] text-gray-500">
-                    Exime del pago mensual
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Exime pagos mensuales
                   </span>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label
+                  className={`relative inline-flex items-center ${isEditMode && isActive ? "cursor-pointer" : "cursor-not-allowed"}`}
+                >
                   <input
                     type="checkbox"
                     {...register("scholarship")}
+                    disabled={!isEditMode || !isActive}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-400"></div>
+                  <div className="w-12 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-400 shadow-inner peer-disabled:opacity-70"></div>
                 </label>
               </div>
             </div>
           </div>
 
-          {/* 2. CARD ASISTENCIA (Visual) */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <TrendingUp size={14} /> Rendimiento de Asistencia
+          {/* Asistencia Visual (Siempre visible, no editable) */}
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative overflow-hidden">
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+              <TrendingUp size={16} className="text-[#10B981]" /> Rendimiento
+              Asistencia
             </h3>
-
             <div className="flex items-center gap-6">
-              {/* Radial Chart */}
               <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
                 <svg
                   className="absolute w-full h-full -rotate-90"
@@ -334,7 +477,7 @@ export default function PlayerDetailPage() {
                     cx="50"
                     cy="50"
                     r={radius}
-                    stroke="#F3F4F6"
+                    stroke="#F1F5F9"
                     strokeWidth="8"
                     fill="transparent"
                   />
@@ -352,160 +495,236 @@ export default function PlayerDetailPage() {
                   />
                 </svg>
                 <div className="flex flex-col items-center">
-                  <span className="text-xl font-black text-gray-900">
+                  <span className="text-xl font-black text-slate-900">
                     {attendanceRate}%
                   </span>
                 </div>
               </div>
-
               <div className="space-y-2">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">
-                    Última Asistencia
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+                    Última Clase
                   </p>
-                  <p className="text-sm font-bold text-gray-900">
+                  <p className="text-sm font-bold text-slate-900 mt-0.5">
                     {lastAttendanceDate}
                   </p>
                 </div>
-                {attendanceRate < 60 && (
-                  <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-2 py-1 rounded-lg border border-red-100">
-                    <AlertTriangle size={10} /> Baja asistencia
-                  </div>
-                )}
               </div>
             </div>
           </div>
 
-          {/* 3. CARD FINANCIERA (Smart) */}
+          {/* Finanzas (Siempre visible, no editable aquí) */}
           {!isScholarship ? (
             <div
-              className={`p-5 rounded-2xl border shadow-sm ${isOverdue ? "bg-red-50 border-red-100" : "bg-emerald-50 border-emerald-100"}`}
+              className={`p-6 rounded-[2rem] border shadow-sm ${isOverdue ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}
             >
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-4">
                 <h3
-                  className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${isOverdue ? "text-red-700" : "text-emerald-700"}`}
+                  className={`text-xs font-black uppercase tracking-widest flex items-center gap-2 ${isOverdue ? "text-red-700" : "text-emerald-700"}`}
                 >
-                  <CreditCard size={14} /> Situación Financiera
+                  <CreditCard size={16} /> Finanzas
                 </h3>
                 {isOverdue && (
-                  <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded border border-red-200 text-red-600">
+                  <span className="text-[10px] font-black bg-white px-2 py-1 rounded-md border border-red-200 text-red-600 shadow-sm">
                     MOROSO
                   </span>
                 )}
               </div>
-
               <div className="flex items-end justify-between">
                 <div>
                   <p
-                    className={`text-2xl font-black ${isOverdue ? "text-red-900" : "text-emerald-900"}`}
+                    className={`text-3xl font-black tracking-tight ${isOverdue ? "text-red-900" : "text-emerald-900"}`}
                   >
                     ${debtAmount.toLocaleString("es-CL")}
                   </p>
                   <p
-                    className={`text-xs ${isOverdue ? "text-red-600/80" : "text-emerald-600/80"}`}
+                    className={`text-xs font-bold mt-1 ${isOverdue ? "text-red-600/80" : "text-emerald-600/80"}`}
                   >
                     {isOverdue ? "Deuda Pendiente" : "Sin Deuda Actual"}
                   </p>
                 </div>
-                {isOverdue && (
-                  <button
-                    type="button"
-                    className="bg-white text-red-600 text-xs font-bold px-3 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors shadow-sm"
-                  >
-                    Notificar
-                  </button>
-                )}
               </div>
             </div>
           ) : (
-            <div className="p-5 rounded-2xl border border-amber-200 bg-amber-50 shadow-sm opacity-80">
-              <div className="flex items-center gap-2 text-amber-800 font-bold text-xs uppercase mb-2">
-                <Trophy size={14} /> Módulo Financiero Pausado
+            <div className="p-6 rounded-[2rem] border border-amber-200 bg-amber-50 shadow-sm opacity-90">
+              <div className="flex items-center gap-2 text-amber-800 font-black text-xs uppercase tracking-widest mb-3">
+                <Trophy size={16} /> Financiero Pausado
               </div>
-              <p className="text-xs text-amber-700 leading-relaxed">
-                Este jugador tiene <strong>Beca Deportiva</strong> activa. No se
-                generarán cobros mensuales mientras esta opción esté habilitada.
+              <p className="text-sm font-medium text-amber-700/80 leading-relaxed">
+                Jugador con{" "}
+                <strong className="font-black text-amber-900">
+                  Beca Deportiva
+                </strong>
+                . Exento de cobros automatizados.
               </p>
             </div>
           )}
         </div>
 
-        {/* === COLUMNA CENTRAL/DERECHA (DATA ENTRY) === */}
+        {/* === COLUMNA CENTRAL/DERECHA (DATOS PRINCIPALES) === */}
         <div className="lg:col-span-2 space-y-6">
-          {/* 1. FICHA MÉDICA (Editor) */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col h-full">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <Stethoscope size={18} className="text-[#312E81]" /> Ficha
-                Médica & Observaciones
-              </h3>
-              <span className="text-xs text-gray-400">
-                Privado (Solo Staff)
-              </span>
-            </div>
-
-            <div className="p-6 flex-1">
-              <textarea
-                {...register("medicalInfo")}
-                rows={12}
-                className="w-full h-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#312E81] focus:border-transparent text-sm leading-relaxed bg-white text-gray-700 resize-none placeholder-gray-300"
-                placeholder="Escribe aquí alergias, lesiones crónicas, medicamentos, tipo de sangre o cualquier observación relevante para el cuerpo técnico..."
-              />
-            </div>
-
-            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-              <div className="text-xs text-gray-400 italic">
-                Última edición: {new Date().toLocaleDateString()}
+          {/* Alerta de bloqueo si está en Modo Edición pero Inactivo */}
+          {isEditMode && !isActive && (
+            <div className="bg-slate-800 rounded-2xl p-4 flex items-center gap-4 shadow-lg animate-fade-in">
+              <div className="w-10 h-10 bg-slate-700 rounded-xl flex items-center justify-center shrink-0">
+                <Lock className="text-white" size={20} />
               </div>
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-[#312E81] hover:bg-indigo-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-900/10 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {saving ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  <Save size={18} />
-                )}
-                Guardar Cambios
-              </button>
-            </div>
-          </div>
-
-          {/* 2. CARD CONTACTO (Read Only por ahora) */}
-          {player.guardian && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-[#312E81]">
-                  <User size={20} />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Apoderado Responsable
-                  </p>
-                  <p className="font-bold text-gray-900">
-                    {player.guardian.fullName}
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <a
-                  href={`tel:${player.guardian.phone}`}
-                  className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                  title="Llamar"
-                >
-                  <Phone size={18} />
-                </a>
-                <a
-                  href={`mailto:${player.guardian.email}`}
-                  className="p-2 text-gray-400 hover:text-[#312E81] hover:bg-indigo-50 rounded-lg transition-colors"
-                  title="Email"
-                >
-                  <Mail size={18} />
-                </a>
+              <div>
+                <p className="text-white font-bold text-sm">
+                  Ficha Bloqueada para Edición
+                </p>
+                <p className="text-slate-400 text-xs font-medium">
+                  Reactiva al jugador en el "Control de Estado" para modificar
+                  sus datos.
+                </p>
               </div>
             </div>
           )}
+
+          {/* Contenedor principal de datos */}
+          <div
+            className={`transition-all duration-300 ${isEditMode && !isActive ? "opacity-60 pointer-events-none grayscale-[0.2]" : ""}`}
+          >
+            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden mb-6">
+              {/* Sección: Datos Personales */}
+              <div className="p-8 border-b border-slate-100">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-6">
+                  <UserCog size={16} className="text-[#312E81]" /> Información
+                  Básica
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                      Nombre
+                    </label>
+                    <input
+                      {...register("firstName", { required: true })}
+                      disabled={!canEditMainDetails}
+                      className={`w-full px-4 py-3 rounded-xl transition-all font-medium text-slate-800 ${isEditMode ? "border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none disabled:opacity-70" : "border-transparent bg-transparent px-0 font-bold text-lg disabled:opacity-100 disabled:cursor-default"}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                      Apellido
+                    </label>
+                    <input
+                      {...register("lastName", { required: true })}
+                      disabled={!canEditMainDetails}
+                      className={`w-full px-4 py-3 rounded-xl transition-all font-medium text-slate-800 ${isEditMode ? "border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none disabled:opacity-70" : "border-transparent bg-transparent px-0 font-bold text-lg disabled:opacity-100 disabled:cursor-default"}`}
+                    />
+                  </div>
+                </div>
+
+                {/* Campos Protegidos (Siempre de Solo Lectura) */}
+                <div
+                  className={`grid grid-cols-1 md:grid-cols-2 gap-6 p-6 rounded-2xl border transition-colors ${isEditMode ? "bg-slate-50/80 border-slate-200" : "bg-transparent border-slate-100"}`}
+                >
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-700 mb-2">
+                      Fecha de Nacimiento{" "}
+                      <Lock size={12} className="text-slate-400" />
+                    </label>
+                    <div className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-100/50 text-slate-600 font-medium cursor-not-allowed flex items-center">
+                      {new Date(player.birthDate).toLocaleDateString("es-CL", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-700 mb-2">
+                      Serie Actual <Lock size={12} className="text-slate-400" />
+                    </label>
+                    <div className="w-full px-4 py-3 rounded-xl border border-indigo-100 bg-indigo-50/50 text-[#312E81] font-black tracking-tight cursor-not-allowed flex items-center">
+                      {player.category.name}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sección: Deportivo y Administrativo */}
+              <div className="p-8 border-b border-slate-100 bg-slate-50/30">
+                {/* Posición */}
+                <div className="mb-8">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <Target size={16} className="text-[#10B981]" /> Posición
+                    Principal
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {POSITIONS.map((pos) => (
+                      <label
+                        key={pos.id}
+                        className={`group ${!canEditMainDetails ? "pointer-events-none" : "cursor-pointer"}`}
+                      >
+                        <input
+                          type="radio"
+                          value={pos.id}
+                          {...register("position")}
+                          disabled={!canEditMainDetails}
+                          className="peer hidden"
+                        />
+                        <div
+                          className={`border rounded-2xl p-4 text-center transition-all ${isEditMode ? "bg-white hover:bg-slate-50 peer-checked:ring-2 peer-checked:ring-[#312E81] peer-checked:border-transparent peer-checked:shadow-md border-slate-200" : "bg-transparent border-transparent peer-checked:bg-white peer-checked:border-slate-200 peer-checked:shadow-sm opacity-50 peer-checked:opacity-100"}`}
+                        >
+                          <div
+                            className={`w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-3 ${pos.color} text-white font-black text-sm shadow-sm ${isEditMode ? "group-hover:-translate-y-1 transition-transform" : ""}`}
+                          >
+                            {pos.label}
+                          </div>
+                          <div
+                            className={`text-[10px] font-black uppercase tracking-wide text-slate-400 peer-checked:${pos.text}`}
+                          >
+                            {pos.full}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Apoderado */}
+                <div>
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <User size={16} className="text-[#312E81]" /> Apoderado
+                    Responsable
+                  </h3>
+                  <select
+                    {...register("guardianId", { required: true })}
+                    disabled={!canEditMainDetails}
+                    className={`w-full px-4 py-3.5 rounded-xl transition-all font-bold text-slate-700 ${isEditMode ? "border border-slate-200 bg-white focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none disabled:opacity-70" : "appearance-none border-transparent bg-transparent px-0 disabled:opacity-100 disabled:cursor-default text-lg"}`}
+                  >
+                    <option value="">Selecciona una familia...</option>
+                    {guardiansData?.usersByRole?.map((u: any) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Sección: Ficha Médica */}
+              <div className="p-8">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                  <Stethoscope size={16} className="text-red-500" /> Ficha
+                  Médica & Notas
+                </h3>
+                <textarea
+                  {...register("medicalInfo")}
+                  disabled={!canEditMainDetails}
+                  rows={isEditMode ? 6 : undefined}
+                  className={`w-full p-4 rounded-xl transition-all text-sm font-medium text-slate-800 resize-none ${isEditMode ? "border border-slate-200 focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none bg-slate-50 focus:bg-white placeholder-slate-300 disabled:opacity-70" : "border-transparent bg-transparent px-0 disabled:opacity-100 disabled:cursor-default min-h-[100px] overflow-hidden"}`}
+                  placeholder={
+                    isEditMode
+                      ? "Alergias, lesiones, tipo de sangre, observaciones para el entrenador..."
+                      : "Sin información médica registrada."
+                  }
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </form>
     </div>

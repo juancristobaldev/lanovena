@@ -102,7 +102,7 @@ export default function CoachesListPage() {
                 </div>
                 <div className="absolute top-4 right-4">
                   <Link
-                    href={`/dashboard/director/coachs/${coach.id}/edit`}
+                    href={`/dashboard/director/coachs/coach/${coach.id}`}
                     className="bg-white/10 hover:bg-white text-white hover:text-[#312E81] p-2.5 rounded-xl transition-colors backdrop-blur-sm block"
                   >
                     <Edit2 size={16} />

@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
-import { useMutation } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import {
   ArrowLeft,
   Loader2,
@@ -19,18 +19,38 @@ const CREATE_TASK = gql`
   mutation CreateTask(
     $schoolId: String!
     $title: String!
+    $priority: TaskPriority!
     $description: String
-    $priority: String
-    $dueDate: String
+    $dueDate: DateTime
+    $assignedToUserId: String
   ) {
     createTask(
       schoolId: $schoolId
       title: $title
-      description: $description
       priority: $priority
       dueDate: $dueDate
+      assignedToUserId: $assignedToUserId
+
+      description: $description
     ) {
       id
+    }
+  }
+`;
+
+const GET_COACH_BY_SCHOOL_ID = gql`
+  query getCoachsBySchoolId($schoolId: String!) {
+    getCoachsBySchoolId(schoolId: $schoolId) {
+      id
+      fullName
+      email
+      role
+      coachProfile {
+        categories {
+          id
+          name
+        }
+      }
     }
   }
 `;
@@ -39,28 +59,51 @@ export default function NewTaskPage() {
   const router = useRouter();
   const { user } = useUser();
 
+  const today = new Date().toISOString().split("T")[0];
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     priority: "MEDIUM",
-    dueDate: "",
+    assignedToUserId: "",
+    dueDate: today,
   });
-
   const [createTask, { loading: isCreating }] = useMutation(CREATE_TASK);
 
   // Fallback para schoolId. En un entorno real idealmente se extrae de un Store global.
   const activeSchoolId =
     user?.schools?.[0]?.school?.id || user?.schools?.[0]?.id;
 
+  const { data, loading, error }: any = useQuery(GET_COACH_BY_SCHOOL_ID, {
+    variables: { schoolId: activeSchoolId },
+    skip: !activeSchoolId,
+    fetchPolicy: "cache-and-network",
+  });
+
+  const coachs = useMemo(() => {
+    if (!data || loading) return null;
+    if (data && !loading) {
+      const coachs: any = data.getCoachsBySchoolId?.length
+        ? data.getCoachsBySchoolId
+        : [];
+      return coachs?.map((c: any) => ({
+        label: c.fullName,
+        value: c.id,
+      }));
+    }
+  }, [data, loading]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim() || !activeSchoolId) return;
 
+    console.log({ formData });
     try {
       await createTask({
         variables: {
           schoolId: activeSchoolId,
           title: formData.title.trim(),
+          assignedToUserId: formData.assignedToUserId || null,
           description: formData.description.trim() || null,
           priority: formData.priority,
           dueDate: formData.dueDate || null,
@@ -119,6 +162,27 @@ export default function NewTaskPage() {
               }
             />
           </div>
+          {/* Título */}
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <Type size={14} /> Responsable
+            </label>
+            <select
+              className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#312E81]/20 transition-all font-bold appearance-none cursor-pointer"
+              value={formData.assignedToUserId}
+              onChange={(e) => {
+                console.log(e.target.value);
+                setFormData({ ...formData, assignedToUserId: e.target.value });
+              }}
+            >
+              <option value={""}>Ninguno</option>
+              {coachs?.map((c: any, i: number) => (
+                <option key={i} label={`${c.label} - Coach`} value={c.value}>
+                  {c.value}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Fila: Prioridad y Fecha */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -145,6 +209,7 @@ export default function NewTaskPage() {
               </label>
               <input
                 type="date"
+                min={today}
                 className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#312E81]/20 transition-all font-bold"
                 value={formData.dueDate}
                 onChange={(e) =>

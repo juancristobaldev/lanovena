@@ -139,7 +139,7 @@ export default function GuardiansListPage() {
                   </div>
                 </div>
                 <Link
-                  href={`/dashboard/director/guardians/${guardian.id}/edit`}
+                  href={`/dashboard/director/guardian/${guardian.id}/edit`}
                   className="text-slate-400 hover:text-[#312E81] p-2 rounded-xl hover:bg-indigo-50 transition-colors bg-white border border-slate-100 shadow-sm"
                 >
                   <Edit2 size={16} />
@@ -214,7 +214,7 @@ export default function GuardiansListPage() {
           </p>
           {!searchTerm && (
             <Link
-              href="/dashboard/director/guardians/new"
+              href="/dashboard/director/guardian/create"
               className="text-[#312E81] font-bold hover:underline"
             >
               Registrar familia &rarr;

@@ -50,6 +50,7 @@ export default function CreateCoachPage() {
     fullName: "",
     email: "",
     password: "",
+    phone: "",
     categoryIds: [] as string[],
   });
 
@@ -87,6 +88,7 @@ export default function CreateCoachPage() {
             fullName: formData.fullName,
             email: formData.email,
             password: formData.password,
+            phone: formData.phone,
             role: "COACH",
             schoolId: activeSchoolId,
           },
@@ -138,7 +140,11 @@ export default function CreateCoachPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-10">
+        <form
+          autoComplete="off"
+          onSubmit={handleSubmit}
+          className="p-8 space-y-10"
+        >
           {/* 1. Datos Personales */}
           <section className="space-y-4">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -175,6 +181,29 @@ export default function CreateCoachPage() {
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none transition-all font-medium"
                 />
               </div>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">
+                Telefono
+              </label>
+              <input
+                type="text"
+                name="fake"
+                autoComplete="username"
+                style={{ display: "none" }}
+              />
+              <input
+                type="tel"
+                required
+                autoComplete="new-password"
+                name="phone_number"
+                placeholder="Ej: +56912345678"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#312E81]/20 focus:border-[#312E81] outline-none transition-all font-medium"
+              />
             </div>
           </section>
 

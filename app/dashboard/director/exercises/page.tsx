@@ -210,7 +210,7 @@ export default function DirectorExercisesPage() {
 
                   <div className="flex items-center gap-1 -mr-2">
                     <Link
-                      href={`/dashboard/director/exercises/new?id=${ex.id}`}
+                      href={`/dashboard/director/exercises/create?id=${ex.id}`}
                       className="p-2 text-slate-400 hover:text-[#312E81] hover:bg-indigo-50 rounded-lg transition-all"
                       title="Editar Ejercicio"
                     >

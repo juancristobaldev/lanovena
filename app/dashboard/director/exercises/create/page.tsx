@@ -1,10 +1,10 @@
 "use client";
 
-import React, { Suspense, useEffect } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter, useSearchParams } from "next/navigation";
 import { gql } from "@apollo/client";
-import { useMutation } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import {
   ArrowLeft,
   Save,
@@ -28,9 +28,23 @@ const CREATE_EXERCISE = gql`
 `;
 
 const UPDATE_EXERCISE = gql`
-  mutation UpdateExercise($id: String!, $input: UpdateExerciseInput!) {
+  mutation UpdateExercise($id: String!, $input: CreateExerciseInput!) {
     updateExercise(id: $id, input: $input) {
       id
+    }
+  }
+`;
+
+const GET_EXERCISE_BY_ID = gql`
+  query exerciseFindById($exerciseId: String!) {
+    exerciseFindById(exerciseId: $exerciseId) {
+      id
+      title
+      description
+      difficulty
+      objective
+      videoUrl
+      imageUrl
     }
   }
 `;
@@ -46,10 +60,21 @@ const ExerciseEditorPage = () => {
     ? user.schools[0]?.school?.id || user.schools[0]?.id
     : null;
 
+  const { data: formData, loading: loadingData }: any = useQuery(
+    GET_EXERCISE_BY_ID,
+    {
+      variables: { exerciseId: exerciseId },
+      skip: !exerciseId,
+    },
+  );
+
+  const exercise = formData?.exerciseFindById;
+
   const {
     register,
     handleSubmit,
     watch,
+    reset,
     formState: { errors },
   } = useForm({
     defaultValues: {
@@ -61,6 +86,21 @@ const ExerciseEditorPage = () => {
       videoUrl: "",
     },
   });
+
+  useEffect(() => {
+    if (exercise) {
+      reset({
+        title: exercise.title || "",
+        objective: exercise.objective || "",
+        difficulty: exercise.difficulty || "BASIC",
+        description: exercise.description || "",
+        imageUrl: exercise.imageUrl || "",
+        videoUrl: exercise.videoUrl || "",
+      });
+    }
+  }, [exercise, reset]);
+
+  console.log({ exercise });
 
   // Observamos la URL de la imagen para la previsualización en vivo
   const watchImageUrl = watch("imageUrl");

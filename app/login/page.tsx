@@ -59,7 +59,7 @@ export default function LoginPage() {
       Cookies.set("userRole", user.role);
 
       if (user.role === "SUPERADMIN") {
-        router.push("/admin/dashboard");
+        router.push("/dashboard/director");
       } else if (user.role === "DIRECTOR") {
         router.push("/dashboard/director");
       } else {

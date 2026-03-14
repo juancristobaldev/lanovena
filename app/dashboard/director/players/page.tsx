@@ -11,10 +11,12 @@ import {
   AlertCircle,
   Loader2,
   UserPlus,
+  Eye,
 } from "lucide-react";
 import { useQuery } from "@apollo/client/react";
 import { gql } from "@apollo/client";
 import { useUser } from "@/src/providers/me";
+import { POSITIONS } from "./create/page";
 
 const GET_PLAYERS_BY_SCHOOL = gql`
   query PlayersBySchool($schoolId: String!) {
@@ -24,6 +26,7 @@ const GET_PLAYERS_BY_SCHOOL = gql`
       lastName
       active
       scholarship
+      position
       category {
         id
         name
@@ -133,6 +136,8 @@ export default function PlayersListPage() {
               <tr>
                 <th className="px-8 py-5 rounded-tl-[2rem]">Jugador</th>
                 <th className="px-6 py-5">Categoría</th>
+                <th className="px-6 py-5">Posición</th>
+
                 <th className="px-6 py-5">Familia Responsable</th>
                 <th className="px-6 py-5">Estado</th>
                 <th className="px-8 py-5 text-right rounded-tr-[2rem]">
@@ -192,6 +197,12 @@ export default function PlayersListPage() {
                       </span>
                     </td>
                     <td className="px-6 py-5">
+                      <span className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                        {POSITIONS.find((p) => p.id === player.position)
+                          ?.full || "Sin Posición"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5">
                       {player.guardian ? (
                         <span className="text-slate-600 font-medium">
                           {player.guardian.fullName}
@@ -218,10 +229,10 @@ export default function PlayersListPage() {
                     </td>
                     <td className="px-8 py-5 text-right">
                       <Link
-                        href={`/dashboard/director/players/${player.id}/edit`}
+                        href={`/dashboard/director/players/player/${player.id}`}
                         className="inline-flex items-center justify-center p-2.5 rounded-xl text-slate-400 hover:text-[#312E81] hover:bg-indigo-50 transition-colors border border-transparent hover:border-indigo-100"
                       >
-                        <Edit2 size={18} />
+                        <Eye size={18} />
                       </Link>
                     </td>
                   </tr>

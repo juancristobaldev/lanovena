@@ -24,6 +24,7 @@ export const GET_COACH_TEAM = gql`
         categories {
           id
           name
+
           players {
             id
             firstName

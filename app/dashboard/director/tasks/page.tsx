@@ -124,8 +124,14 @@ export default function KanbanBoardPage() {
         ? sourceTasks
         : Array.from(newColumns[destStatus]);
 
-    const [movedTask] = sourceTasks.splice(source.index, 1);
-    movedTask.status = destStatus;
+    // SOLUCIÓN AL ERROR DE SOLO LECTURA:
+    // 1. Extraemos la tarea original (congelada por Apollo)
+    const [removedTask] = sourceTasks.splice(source.index, 1);
+
+    // 2. Creamos una copia superficial (shallow copy) y le asignamos el nuevo estado
+    const movedTask = { ...removedTask, status: destStatus };
+
+    // 3. Insertamos la copia modificada en la nueva posición
     destTasks.splice(destination.index, 0, movedTask);
 
     newColumns[sourceStatus] = sourceTasks;
@@ -146,7 +152,8 @@ export default function KanbanBoardPage() {
       });
     } catch (err) {
       console.error("Error moviendo tarea:", err);
-      // Opcional: Revertir estado si falla la mutación
+      // Opcional: Aquí podrías añadir lógica para revertir el estado de la UI (setColumns)
+      // si la mutación en el servidor falla, para que el usuario no vea "datos fantasma".
     }
   };
 

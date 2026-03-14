@@ -50,10 +50,10 @@ const CREATE_PLAYER = gql`
   }
 `;
 
-const POSITIONS = [
+export const POSITIONS = [
   {
-    id: "ARQ",
-    label: "ARQ",
+    id: "GK",
+    label: "GK",
     full: "Arquero",
     color: "bg-amber-500",
     text: "text-amber-600",
@@ -66,15 +66,15 @@ const POSITIONS = [
     text: "text-blue-700",
   },
   {
-    id: "MED",
-    label: "MED",
+    id: "MID",
+    label: "MID",
     full: "Medio",
     color: "bg-[#10B981]",
     text: "text-[#10B981]",
   },
   {
-    id: "DEL",
-    label: "DEL",
+    id: "FW",
+    label: "FW",
     full: "Delantero",
     color: "bg-red-600",
     text: "text-red-700",
@@ -111,7 +111,7 @@ export default function CreatePlayerPage() {
       lastName: "",
       birthDate: "",
       categoryId: "",
-      position: "MED",
+      position: "MID",
       scholarship: "false",
       guardianId: "",
     },

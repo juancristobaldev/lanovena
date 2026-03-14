@@ -65,7 +65,7 @@ export default function CreateGuardianPage() {
       });
 
       showAlert("Apoderado registrado exitosamente", "success");
-      router.push("/dashboard/director/guardians");
+      router.push("/dashboard/director/guardian");
     } catch (error: any) {
       const msg = error.message.includes("Unique constraint")
         ? "El correo ingresado ya pertenece a un usuario."
